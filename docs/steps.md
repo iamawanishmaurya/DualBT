@@ -895,3 +895,7 @@
 ## 2026-05-24 21:21:10 IST - Stage Physical Test And Routing Changes
 - Action: Ran `git add -A` using `GIT_DIR=/tmp/DualBT.git` and `GIT_WORK_TREE=/home/astra/codex/DualBT`, then checked `git status --short --branch`.
 - Result: Git staged the v0.2.11 APK metadata, Java output router, route-matching tests, physical-test docs, problem/solution docs, and safe UI dump scripts; the ignored `testing/scrcpy` directory did not appear in the staged status.
+
+## 2026-05-24 21:21:35 IST - Commit Physical Dual Output Routing
+- Action: Committed the staged physical-device validation, Java output routing, tests, scripts, and docs.
+- Result: Created commit `80c229e` with message `feat: add physical dual output routing`.
