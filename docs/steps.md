@@ -663,3 +663,235 @@
 ## 2026-05-24 18:50:05 IST - Commit And Start Watchdog Controller
 - Action: Ran `git add -A`, confirmed staged status, committed `feat: add codex watchdog controller`, and started the watchdog controller.
 - Result: Local commit `df61180` contains the watchdog controller. The detached watchdog is running with PID 11 and logs to `docs/codex-watchdog.log`.
+
+## 2026-05-24 18:51:00 IST - Attempt Debug APK Build For Device Test
+- Action: Ran the known offline `./gradlew --no-daemon --offline clean assembleDebug` command for the connected-device install test.
+- Result: The JVM failed before Gradle startup because the hard-coded Gradle instrumentation javaagent JAR under `/tmp/dualbt-gradle-home` is missing. Problem logged in `docs/problems/2026-05-24-gradle-javaagent-cache-missing.md`.
+
+## 2026-05-24 18:52:30 IST - Rehydrate Temporary Offline Build Cache
+- Action: Recreated `/tmp/dualbt-gradle-home`, `/tmp/dualbt-offline-maven`, and `/tmp/dualbt-debug.keystore` from durable local Android and Gradle caches.
+- Result: The missing Java agent/cache issue is resolved for the next build attempt. Solution logged in `docs/solutions/gradle-javaagent-cache-missing.md`.
+
+## 2026-05-24 20:17:38 IST - Resume Physical Device Validation
+- Action: Checked Git state, ADB device state, target device properties, and `scrcpy` availability.
+- Result: Device `d1bc5c4a` is connected as `device`, model `Redmi Note 9 Pro`, Android API 31. `scrcpy 3.3.4` is available at `/home/astra/.local/bin/scrcpy`. The worktree has pending documentation for the Gradle temporary-cache issue from the interrupted build attempt.
+
+## 2026-05-24 20:18:45 IST - Inspect Build Artifact And Gradle Cache State
+- Action: Checked the existing debug APK badging, Gradle properties, the temporary Gradle/offline Maven/debug keystore paths, and the documented Gradle wildcard-IP solution.
+- Result: A previously built `app-debug.apk` exists with package `com.xpwnit.dualbt`, versionCode 10/versionName `0.2.8`, minSdk 29, and targetSdk 34. The temporary Gradle home exists again but was copied from the original durable cache, so the no-op lock-listener patch was not present.
+
+## 2026-05-24 20:21:10 IST - Reapply Temporary Gradle Lock Listener Patch
+- Action: Recreated the no-op `DefaultFileLockContentionHandler`, compiled it against the temporary Gradle 8.5 distribution, and updated `/tmp/dualbt-gradle-home/.../gradle-persistent-cache-8.5.jar`.
+- Result: The repeated Gradle wildcard-IP issue has the previously documented temporary-cache patch reapplied for the next build attempt.
+
+## 2026-05-24 20:24:55 IST - Build Fresh Debug APK For Device
+- Action: Reran the offline clean debug build after reapplying the temporary Gradle lock-listener patch.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 2m 36s. Fresh debug APK is available at `app/build/outputs/apk/debug/app-debug.apk`.
+
+## 2026-05-24 20:25:20 IST - Inspect And Install Debug APK On Physical Device
+- Action: Inspected APK badging and size, checked whether `com.xpwnit.dualbt` was already installed, and ran `adb -s d1bc5c4a install -r app/build/outputs/apk/debug/app-debug.apk`.
+- Result: APK reports package `com.xpwnit.dualbt`, versionCode 10/versionName `0.2.8`, minSdk 29, targetSdk 34, and size 76K. Streamed install succeeded on device `d1bc5c4a`.
+
+## 2026-05-24 20:26:10 IST - Grant Permissions And Launch App
+- Action: Attempted to grant Bluetooth/audio/notification permissions, inspected installed package details, cleared logcat, force-stopped the app, and launched it with `monkey`.
+- Result: The app is installed and launcher event injection succeeded. `POST_NOTIFICATIONS` is unknown on API 31, `BLUETOOTH_CONNECT` is granted, and `RECORD_AUDIO`/`BLUETOOTH_SCAN` are still not granted. Problem logged in `docs/problems/2026-05-24-device-runtime-permission-grant-mismatch.md`.
+
+## 2026-05-24 20:27:20 IST - Fix Device Runtime Permission Grants
+- Action: Granted `RECORD_AUDIO`, `BLUETOOTH_SCAN`, and `BLUETOOTH_CONNECT` individually, then inspected package permissions and app-ops.
+- Result: All three API 31 runtime permissions are granted for user 0, and app-ops reports `RECORD_AUDIO: foreground`. Solution logged in `docs/solutions/device-runtime-permission-grant-mismatch.md`.
+
+## 2026-05-24 20:28:10 IST - Detect Launch Crash On Physical Device
+- Action: Explicitly launched `com.xpwnit.dualbt/.MainActivity`, checked process/window focus, pulled a UIAutomator dump, and captured a screenshot.
+- Result: The app crashes on launch. UIAutomator shows MIUI crash dialog text `DualBT keeps stopping`, and window focus reports `Application Error: com.xpwnit.dualbt`. Problem logged in `docs/problems/2026-05-24-device-launch-crash.md`.
+
+## 2026-05-24 20:26:51 IST - Capture Device Launch Crash Stack
+- Action: Pulled `logcat -b crash` and filtered `logcat -v time` for `AndroidRuntime`/`com.xpwnit.dualbt` after the launch failure.
+- Result: Root cause is a `NullPointerException` from `PhoneWindow.getInsetsController()` called by `MainActivity.configureWindow(MainActivity.java:128)` before the decor/insets controller is available on the Redmi Note 9 Pro API 31 device. The exact stack was appended to `docs/problems/2026-05-24-device-launch-crash.md`.
+
+## 2026-05-24 20:27:43 IST - Inspect Launch Crash Source
+- Action: Read `app/src/main/java/com/xpwnit/dualbt/MainActivity.java`, searched all production/test code for `getInsetsController` and `configureWindow`, and reviewed the existing plain Java test style.
+- Result: The only Java fallback crash site is `MainActivity.configureWindow()`, which calls `window.getInsetsController()` before `buildUi()` calls `setContentView(root)`. The planned fix is to keep window color setup early, then apply light system-bar appearance only after content view creation with a null-safe controller lookup.
+
+## 2026-05-24 20:28:27 IST - Add Red Test For System Bar Appearance Policy
+- Action: Added `SystemBarAppearancePolicyTest` and ran it with `javac -sourcepath app/src/main/java:app/src/test/java`.
+- Result: The test failed for the expected TDD reason: `SystemBarAppearancePolicy` does not exist yet. The desired behavior is now captured before the launch-crash fix is implemented.
+
+## 2026-05-24 20:29:47 IST - Implement Deferred System Bar Appearance Fix
+- Action: Added `SystemBarAppearancePolicy`, moved light system-bar appearance updates out of early window setup, applied them from the content root after `setContentView()`, and reran all plain Java tests.
+- Result: `SystemBarAppearancePolicyTest` now passes, and the full plain Java test set exits with code 0. The Android launch fix is ready for APK rebuild and physical-device verification.
+
+## 2026-05-24 20:30:59 IST - Rebuild Debug APK After Launch Fix
+- Action: Ran the offline Gradle debug build with the temporary Gradle home, offline Maven cache, and debug keystore environment.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 47s. A rebuilt debug APK is available at `app/build/outputs/apk/debug/app-debug.apk`.
+
+## 2026-05-24 20:32:43 IST - Validate Launch Fix And Detect Repeated UIAutomator Warning
+- Action: Installed the rebuilt APK, regranted runtime permissions, cleared logcat, relaunched `MainActivity`, captured a screenshot/UI dump, checked crash logs, and selected two Bluetooth devices.
+- Result: DualBT launches and remains foregrounded with PID `31641`; no new `AndroidRuntime` crash appears for the app. UI shows `DualBT`, `Bluetooth Ready`, real bonded devices, `Ready to stream`, and `2/2`. The repeated MIUI `uiautomator dump` theme-config warning was logged in `docs/problems/2026-05-24-uiautomator-miui-theme-config-warning.md` for research before further UI dump retries.
+
+## 2026-05-24 20:34:28 IST - Add Red Test For Safe UI Dump Wrapper
+- Action: Researched repeated MIUI `uiautomator dump` warning options, then added `scripts/test-dump-ui-safe.sh` with a fake ADB that emits the MIUI theme warning while still producing valid hierarchy XML.
+- Result: The test failed for the expected TDD reason: `scripts/dump-ui-safe.sh` does not exist yet. This captures the desired validation behavior before adding the wrapper.
+
+## 2026-05-24 20:35:12 IST - Implement Safe UI Dump Wrapper
+- Action: Added `scripts/dump-ui-safe.sh`, reran `scripts/test-dump-ui-safe.sh`, and syntax-checked the wrapper and test script.
+- Result: The safe dump test and shell syntax checks passed. The repeated MIUI `theme_compatibility.xml` warning is documented with researched alternatives and handled as validation noise when XML hierarchy output is valid.
+
+## 2026-05-24 20:36:31 IST - Verify Stream Start On Physical Device
+- Action: Used the safe UI dump wrapper to confirm the selected state, tapped `Start Mock Stream`, accepted the Android MediaProjection `Start now` consent sheet, captured screenshot/UI XML, and filtered logcat for DualBT capture/service messages.
+- Result: The UI transitioned to `Streaming to 2 speaker(s)` with `Stop Streaming` enabled. Logcat confirms `Audio playback capture started`, `Foreground service started with capture routes: Stone 180, Rockerz 110`, and `Captured PCM chunks=1`.
+
+## 2026-05-24 20:37:04 IST - Verify Stream Stop On Physical Device
+- Action: Tapped `Stop Streaming`, captured screenshot/UI XML with the safe dump wrapper, filtered logcat for capture/service shutdown messages, and checked the app process/window state.
+- Result: The UI returned to `Ready to stream` with `Start Mock Stream` enabled and both selected devices retained. Logcat confirms `Audio playback capture stopped` and `DualBTService` destruction; the app process remains alive and foregrounded as PID `31641`.
+
+## 2026-05-24 20:37:55 IST - Verify Scrcpy Control Session
+- Action: Checked scrcpy options and ran `/home/astra/.local/bin/scrcpy -s d1bc5c4a --no-audio --stay-awake --window-title DualBT-test --max-size=720 --time-limit=8`.
+- Result: scrcpy connected to the Redmi Note 9 Pro, pushed `scrcpy-server`, started the controller/receiver threads, opened an OpenGL renderer, mirrored a `328x720` texture, and exited cleanly at the time limit. A non-blocking missing icon warning was logged in `docs/problems/2026-05-24-scrcpy-icon-missing-warning.md` and resolved in `docs/solutions/scrcpy-icon-missing-warning.md`.
+
+## 2026-05-24 20:38:45 IST - Verify In-App Logging Overlay
+- Action: Opened the `Logs` overlay on the physical device, captured screenshot/UI XML with the safe dump wrapper, and checked for log filters and recent service/capture entries.
+- Result: The overlay shows `ALL`, `DEBUG`, `INFO`, `WARN`, and `ERROR` filters plus recent entries for `DualBTService`, `CaptureEngine`, `MainViewModel`, and `MainActivity`, including service start/stop and captured PCM chunk messages.
+
+## 2026-05-24 20:40:01 IST - Verify Dark And Light Themes On Device
+- Action: Checked current `cmd uimode night` state, switched to `night yes`, relaunched DualBT, captured `/tmp/dualbt-dark-theme.png`, restored `night no`, relaunched again, and captured `/tmp/dualbt-light-restored.png`.
+- Result: Dark mode renders a dark glassmorphism UI with readable controls and device cards. Light mode was restored and renders the light glassmorphism UI again. The device night mode is back to `no`.
+
+## 2026-05-24 20:40:20 IST - Document Device Launch Crash Solution
+- Action: Created `docs/solutions/device-launch-crash.md` and linked it from the launch-crash problem file.
+- Result: The launch crash now has paired problem/solution documentation covering the exact failure, code fix, reason, commands run, and physical-device verification evidence.
+
+## 2026-05-24 20:41:05 IST - Bump Release Metadata For Device Validation Fix
+- Action: Updated Android release metadata to versionName `0.2.10`/versionCode `11` and added a `0.2.10` changelog entry for the launch fix, safe UI dump wrapper, and physical-device validation.
+- Result: The next commit can be tagged as `v0.2.10` with app/build metadata aligned to the latest code changes.
+
+## 2026-05-24 20:42:07 IST - Start Mini Boost 4 Dual-Speaker Validation
+- Action: Updated the active validation target from generic bonded Bluetooth devices to two physical `Mini Boost 4` speakers per user request.
+- Result: The next steps are to rebuild/install the current `0.2.10` APK, inspect Bluetooth state for both `Mini Boost 4` speakers, connect them, and verify DualBT selection, capture, and playback evidence.
+
+## 2026-05-24 20:43:44 IST - Build 0.2.10 APK For Mini Boost 4 Test
+- Action: Ran the offline Gradle clean debug build after the `0.2.10` version bump.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 1m 7s. The rebuilt APK is ready for installation before the Mini Boost 4 test.
+
+## 2026-05-24 20:44:15 IST - Install 0.2.10 APK On Physical Device
+- Action: Inspected APK badging, installed `app/build/outputs/apk/debug/app-debug.apk`, and granted `RECORD_AUDIO`, `BLUETOOTH_SCAN`, and `BLUETOOTH_CONNECT`.
+- Result: The device now has DualBT versionName `0.2.10`/versionCode `11` installed, and all three runtime permissions are granted for user 0.
+
+## 2026-05-24 20:44:56 IST - Inspect Bluetooth State For Mini Boost 4
+- Action: Checked `dumpsys bluetooth_manager`, Bluetooth settings state, and the visible Bluetooth Settings screen.
+- Result: Bluetooth is on, `MaxConnectedAudioDevices` is 5, but no `Mini Boost 4` device is currently bonded or visible in the saved-device list. The visible saved devices include Airdopes 601ANC, KDC-U5**BT, OnePlus Bullets Wireless Z2, Pulse Go, and Rockerz 110 entries.
+
+## 2026-05-24 20:47:20 IST - Discover Two Mini Boost 4 Devices
+- Action: Scrolled Android Bluetooth Settings and captured `/tmp/dualbt-mini-boost-discovered.xml` with `scripts/dump-ui-safe.sh`.
+- Result: The safe UI dump shows two separate available-device rows named `Mini boost 4`, one at bounds `[0,1363][1080,1539]` and another at bounds `[0,1539][1080,1715]`, ready for pairing/connection testing.
+
+## 2026-05-24 20:48:09 IST - Open First Mini Boost 4 Pairing Dialog
+- Action: Tapped the first `Mini boost 4` available-device row and captured `/tmp/dualbt-mini-boost-after-first-tap.xml`.
+- Result: Android Settings displayed `Pair with Mini boost 4?` with an unchecked contact/call-history sharing checkbox and `Block`, `Cancel`, and `Pair` buttons. The test will proceed with contacts sharing left unchecked.
+
+## 2026-05-24 20:48:46 IST - Pair And Connect First Mini Boost 4
+- Action: Accepted the first pairing request without contact/call-history sharing, captured `/tmp/dualbt-mini-boost-after-first-pair.xml`, and checked `dumpsys bluetooth_manager`.
+- Result: The first `Mini boost 4` bonded and connected as `41:42:26:B3:62:1C`; `dumpsys` shows Headset and A2DP state machines connected and active. MIUI displayed a codec notice saying AAC may fail and the device was switched to SBC automatically.
+
+## 2026-05-24 20:49:28 IST - Relocate Second Mini Boost 4
+- Action: Acknowledged the MIUI codec notice, scrolled Bluetooth Settings, and captured `/tmp/dualbt-mini-boost-search-second-1.xml`.
+- Result: The first `Mini boost 4` is visible as `Connected | Battery 100% | Active`, and the second `Mini boost 4` is visible again under `AVAILABLE DEVICES` at bounds `[0,1539][1080,1715]`.
+
+## 2026-05-24 20:50:22 IST - Open Second Mini Boost 4 Pairing Dialog
+- Action: Tapped the second `Mini boost 4` available-device row and captured `/tmp/dualbt-mini-boost-second-current.xml`.
+- Result: Android Settings displayed `Pair with Mini boost 4?` for the second speaker with the contact/call-history checkbox unchecked and `Block`, `Cancel`, and `Pair` buttons available.
+
+## 2026-05-24 20:50:47 IST - Log Second Mini Boost 4 Pair Timeout
+- Action: Checked Bluetooth service diagnostics after the second pairing dialog stayed open during evidence collection.
+- Result: The second `Mini boost 4` attempt returned to `BOND_STATE_NONE` with `LMP Response Timeout`; the issue is documented in `docs/problems/2026-05-24-second-mini-boost-pair-timeout.md` before retrying.
+
+## 2026-05-24 20:52:13 IST - Check Second Pair Retry State
+- Action: Accepted the stale second pairing sheet, waited for Bluetooth state to settle, captured `/tmp/dualbt-mini-boost-second-after-wait.xml`, and rechecked `dumpsys bluetooth_manager`.
+- Result: The stale accept did not create a new bond; Android Settings shows only the first `Mini boost 4` as connected, and `dumpsys` still lists only `41:42:26:B3:62:1C` as a bonded `Mini boost 4`.
+
+## 2026-05-24 20:54:07 IST - Pair And Connect Second Mini Boost 4
+- Action: Refreshed the available-device list, tapped the second `Mini boost 4`, accepted the rendered pairing sheet, captured `/tmp/dualbt-mini-boost-second-accepted-final.xml`, and checked `dumpsys bluetooth_manager`.
+- Result: Both speakers are bonded and connected: `41:42:26:B3:62:1C` and `41:42:2E:9E:5E:AE`. Android Settings shows the two `Mini boost 4` rows connected, and `dumpsys` shows both AVRCP state machines connected with the second speaker active.
+
+## 2026-05-24 20:55:07 IST - Launch DualBT With Two Mini Boost 4 Speakers
+- Action: Cleared logcat, force-stopped DualBT, launched `com.xpwnit.dualbt/.MainActivity`, captured `/tmp/dualbt-mini-app-launched.xml` and `/tmp/dualbt-mini-app-launched.png`, and checked focus/process state.
+- Result: DualBT launched in the foreground as PID `14174` and lists two separate bonded `Mini boost 4` devices with addresses `41:42:26:B3:62:1C` and `41:42:2E:9E:5E:AE`.
+
+## 2026-05-24 20:55:44 IST - Select Both Mini Boost 4 Routes In DualBT
+- Action: Tapped both `Mini boost 4` device rows in DualBT and captured `/tmp/dualbt-mini-selected.xml`.
+- Result: DualBT shows both same-name speakers as `Selected`, preserves their unique addresses, and the status card reports `Ready to stream` with `2/2` selected.
+
+## 2026-05-24 20:57:06 IST - Start DualBT Capture For Mini Boost 4 Routes
+- Action: Scrolled to the start button, tapped `Start Mock Stream`, accepted the Android MediaProjection `Start now` consent prompt, captured `/tmp/dualbt-mini-streaming.xml`, and filtered logcat for DualBT service/capture entries.
+- Result: DualBT shows `Stop Streaming`. Logcat confirms `Capture permission granted; starting streaming to Mini boost 4, Mini boost 4`, `Audio playback capture started`, foreground service startup for the two Mini Boost routes, and `Captured PCM chunks=1`.
+
+## 2026-05-24 21:00:04 IST - Identify Missing Dual Output Writer
+- Action: Stopped the active stream, captured `/tmp/dualbt-mini-stopped-before-output-fix.xml`, reviewed `DualBTService`, `AndroidPlaybackCaptureEngine`, the planned Kotlin `AudioRouter`, and searched the verified Java build path for `AudioTrack` output routing.
+- Result: The Mini Boost route selection and capture path work, but the verified Java runtime only copies captured PCM into two buffers and does not write those buffers to Bluetooth output tracks. The missing routing issue is documented in `docs/problems/2026-05-24-dual-output-routing-missing.md`.
+
+## 2026-05-24 21:01:12 IST - Add Red Test For Output Route Matching
+- Action: Added `AudioOutputRouteMatcherTest` for two same-name `Mini boost 4` routes with distinct addresses and ran it with `javac`.
+- Result: The test failed for the expected TDD reason: `AudioOutputRouteMatcher` does not exist yet.
+
+## 2026-05-24 21:03:08 IST - Add Java Output Router
+- Action: Added `AudioOutputRouteMatcher`, added `AndroidAudioOutputRouter`, wired `AndroidPlaybackCaptureEngine` to start two `AudioTrack` outputs, write split PCM to both tracks, and exclude DualBT's own UID from playback capture.
+- Result: The focused `AudioOutputRouteMatcherTest` now compiles and exits with code 0.
+
+## 2026-05-24 21:04:04 IST - Bump Version For Dual Output Routing
+- Action: Renamed the stream button from `Start Mock Stream` to `Start Stream`, bumped Android metadata to versionName `0.2.11`/versionCode `12`, and added a `0.2.11` changelog entry.
+- Result: The output-routing fix is tracked as release `v0.2.11` pending build, install, and physical-device verification.
+
+## 2026-05-24 21:06:04 IST - Verify v0.2.11 Build
+- Action: Ran all plain Java tests and the offline Gradle clean debug build after adding the Java output router.
+- Result: All plain Java tests exited with code 0, and `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 1m 7s.
+
+## 2026-05-24 21:06:34 IST - Install v0.2.11 On Physical Device
+- Action: Inspected APK badging, installed `app/build/outputs/apk/debug/app-debug.apk`, granted runtime permissions, and confirmed package metadata.
+- Result: Install succeeded on `d1bc5c4a`; the APK reports package `com.xpwnit.dualbt`, versionName `0.2.11`, versionCode `12`, min SDK `29`, and target SDK `34`. Both `Mini boost 4` speakers remain bonded and connected in Android Bluetooth diagnostics.
+
+## 2026-05-24 21:09:54 IST - Add Platform Routing Degradation Logs
+- Action: Re-tested `v0.2.11` on the two Mini Boost speakers and inspected `AudioOutputRouter` logs, then added warning logs when Android exposes fewer matching Bluetooth output devices or routes multiple tracks to the same device.
+- Result: The app now makes platform dual-output limitations explicit instead of silently treating two selected Bluetooth routes as proven independent speaker playback.
+
+## 2026-05-24 21:11:24 IST - Rebuild v0.2.11 With Routing Warnings
+- Action: Reran all plain Java tests and the offline Gradle clean debug build after adding platform routing degradation logs.
+- Result: All plain Java tests exited with code 0, and the offline Gradle clean debug build completed successfully in 45s.
+
+## 2026-05-24 21:14:53 IST - Inspect Live Mini Boost Routing State
+- Action: Checked the attached device, Bluetooth manager, DualBT foreground service, current UI hierarchy, logcat, and `dumpsys audio` while two `Mini boost 4` speakers were selected and streaming.
+- Result: Device `d1bc5c4a` is attached, DualBT's foreground service is running, both `Mini boost 4` rows are selected in the UI, and both app `AudioTrack` players are active. Android routes both active app players to the same audio device id `7083`, and `dumpsys audio` exposes only one connected A2DP output route for `Mini boost 4` at `41:42:2E:9E:5E:AE`.
+
+## 2026-05-24 21:15:30 IST - Log Android Find Portability Issue
+- Action: Logged the Android toybox `find -printf` incompatibility encountered while inspecting app-private log files.
+- Result: Created `docs/problems/2026-05-24-android-find-printf-unsupported.md` and `docs/solutions/android-find-printf-unsupported.md`; future app log pulls will use portable `run-as ls` and `run-as cat` commands.
+
+## 2026-05-24 21:16:22 IST - Pull App File Log And Audio Service Evidence
+- Action: Pulled DualBT's app-private `files/logs/dualbt.log` with `run-as cat` and captured the relevant `dumpsys audio` playback, policy, and connected-device state.
+- Result: DualBT logged two selected Mini Boost routes, two output `AudioTrack` instances, ongoing PCM writes through at least 1500 chunks, and explicit warnings that Android exposed only 1/2 matching Bluetooth output routes. `dumpsys audio` confirmed both app players were active but shared device id `7083`, with only one connected A2DP sink exposed to the audio service.
+
+## 2026-05-24 21:16:34 IST - Stop Active Physical Test Stream
+- Action: Tapped `Stop Streaming` on the physical device and rechecked `dumpsys activity services com.xpwnit.dualbt`.
+- Result: DualBT's foreground streaming service stopped cleanly; `dumpsys activity services` reports no active DualBT service.
+
+## 2026-05-24 21:17:00 IST - Document Output Router Fix And Remaining Platform Issue
+- Action: Created the solution document for the missing Java output writer and created a full problem document for the remaining Android/MIUI single-A2DP-route limitation.
+- Result: `docs/solutions/dual-output-routing-missing.md` records the implemented app-side fix and commands; `docs/problems/2026-05-24-android-one-a2dp-output-route.md` records exact logs, reproduction steps, environment, hypothesis, and candidate fix directions.
+
+## 2026-05-24 21:18:10 IST - Run Final Plain Java Tests
+- Action: Compiled and ran every `app/src/test/java/**/*Test.java` file with `javac`/`java` against the current source tree.
+- Result: All plain Java tests exited with code 0.
+
+## 2026-05-24 21:19:12 IST - Run Final Offline Debug Build
+- Action: Ran `./gradlew --no-daemon --offline clean assembleDebug` with the offline Maven, SDK, debug keystore, and Gradle cache environment.
+- Result: Build completed successfully in 44s; `:app:assembleDebug` produced `app/build/outputs/apk/debug/app-debug.apk`.
+
+## 2026-05-24 21:19:40 IST - Verify And Reinstall Final APK
+- Action: Checked APK badging with `aapt dump badging` and installed the rebuilt APK on physical device `d1bc5c4a` with `adb install -r`.
+- Result: APK metadata reports `com.xpwnit.dualbt` versionName `0.2.11`, versionCode `12`, min SDK `29`, target SDK `34`; installation completed with `Success`.
+
+## 2026-05-24 21:20:35 IST - Run Safe UI Dump Script Test
+- Action: Ran `scripts/test-dump-ui-safe.sh` against the fake ADB harness.
+- Result: The test exited with code 0 and produced a valid temporary UI XML file, confirming the MIUI `theme_compatibility.xml` warning wrapper still preserves valid hierarchy output.
+
+## 2026-05-24 21:21:10 IST - Stage Physical Test And Routing Changes
+- Action: Ran `git add -A` using `GIT_DIR=/tmp/DualBT.git` and `GIT_WORK_TREE=/home/astra/codex/DualBT`, then checked `git status --short --branch`.
+- Result: Git staged the v0.2.11 APK metadata, Java output router, route-matching tests, physical-test docs, problem/solution docs, and safe UI dump scripts; the ignored `testing/scrcpy` directory did not appear in the staged status.

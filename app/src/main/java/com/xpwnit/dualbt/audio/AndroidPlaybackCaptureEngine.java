@@ -4,7 +4,9 @@ import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioPlaybackCaptureConfiguration;
 import android.media.AudioRecord;
+import android.content.Context;
 import android.media.projection.MediaProjection;
+import android.os.Process;
 import android.os.Handler;
 import android.os.Looper;
 
@@ -14,6 +16,7 @@ import com.xpwnit.dualbt.state.StreamRoutePlan;
 public final class AndroidPlaybackCaptureEngine {
     private final AudioCaptureSpec spec = AudioCaptureSpec.defaultPlaybackSpec();
     private final PcmSplitter splitter = new PcmSplitter();
+    private final AndroidAudioOutputRouter outputRouter;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private AudioRecord audioRecord;
     private MediaProjection mediaProjection;
@@ -21,6 +24,10 @@ public final class AndroidPlaybackCaptureEngine {
     private Thread captureThread;
     private volatile boolean running;
     private long chunksRead;
+
+    public AndroidPlaybackCaptureEngine(Context context) {
+        outputRouter = new AndroidAudioOutputRouter(context);
+    }
 
     public synchronized boolean start(MediaProjection projection, StreamRoutePlan routePlan) {
         if (projection == null) {
@@ -57,6 +64,11 @@ public final class AndroidPlaybackCaptureEngine {
             if (record.getState() != AudioRecord.STATE_INITIALIZED) {
                 record.release();
                 AppLogger.w("CaptureEngine", "AudioRecord was not initialized");
+                return false;
+            }
+            if (!outputRouter.start(spec, routePlan)) {
+                record.release();
+                AppLogger.w("CaptureEngine", "Output router could not start");
                 return false;
             }
             audioRecord = record;
@@ -97,6 +109,7 @@ public final class AndroidPlaybackCaptureEngine {
         for (String usage : spec.matchingUsages()) {
             builder.addMatchingUsage(toAudioUsage(usage));
         }
+        builder.excludeUid(Process.myUid());
         return builder.build();
     }
 
@@ -122,6 +135,7 @@ public final class AndroidPlaybackCaptureEngine {
             int bytesRead = currentRecord.read(sharedBuffer, 0, sharedBuffer.length);
             if (bytesRead > 0) {
                 splitter.copyToOutputs(sharedBuffer, bytesRead, firstOutput, secondOutput);
+                outputRouter.write(firstOutput, secondOutput, bytesRead);
                 chunksRead++;
                 if (chunksRead == 1 || chunksRead % 500 == 0) {
                     AppLogger.d("CaptureEngine", "Captured PCM chunks=" + chunksRead + ", bytes=" + bytesRead + ", routes=" + routePlan.displayNames());
@@ -146,6 +160,7 @@ public final class AndroidPlaybackCaptureEngine {
             }
             record.release();
         }
+        outputRouter.stop();
         if (thread != null && thread != Thread.currentThread()) {
             try {
                 thread.join(500L);

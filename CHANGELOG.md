@@ -2,6 +2,25 @@
 
 All notable changes to DualBT will be documented in this file.
 
+## [0.2.11] - 2026-05-24
+
+### Added
+- Added a verified Java `AudioTrack` output router for the default APK path that creates two output tracks, prefers matching Bluetooth output devices, writes split PCM to both routes, and logs output routing/write evidence.
+- Added route-matching tests for two same-name `Mini boost 4` speakers with different Bluetooth addresses.
+
+### Changed
+- Playback capture now excludes DualBT's own UID to avoid recapturing the app's output track audio.
+- Renamed the stream button from `Start Mock Stream` to `Start Stream` in the verified Java UI.
+
+## [0.2.10] - 2026-05-24
+
+### Added
+- Added a safe UI dump wrapper for physical-device validation that treats known MIUI `uiautomator` theme-config noise as non-blocking only after validating XML hierarchy output.
+- Added physical-device validation documentation for app install, scrcpy mirroring/control, logging overlay, dark/light theme checks, MediaProjection consent, and playback-capture start/stop.
+
+### Fixed
+- Fixed a physical-device launch crash by deferring light system-bar appearance updates until after the activity content root exists.
+
 ## [0.2.9] - 2026-05-24
 
 ### Added

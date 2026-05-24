@@ -21,7 +21,6 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
-import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
@@ -38,6 +37,7 @@ import com.xpwnit.dualbt.service.DualBTService;
 import com.xpwnit.dualbt.state.StreamDevice;
 import com.xpwnit.dualbt.state.StreamRoutePlan;
 import com.xpwnit.dualbt.state.StreamSessionController;
+import com.xpwnit.dualbt.ui.SystemBarAppearancePolicy;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -74,6 +74,7 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
         AppLogger.i("MainViewModel", "ViewModel initialized");
         loadDevices("initial");
         buildUi();
+        applySystemBarAppearance();
         requestRuntimePermissions();
         render();
     }
@@ -124,15 +125,21 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
         Window window = getWindow();
         window.setStatusBarColor(Color.TRANSPARENT);
         window.setNavigationBarColor(dark ? Color.rgb(8, 10, 16) : Color.rgb(238, 244, 250));
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            WindowInsetsController controller = window.getInsetsController();
-            if (controller != null && !dark) {
+    }
+
+    private void applySystemBarAppearance() {
+        if (!SystemBarAppearancePolicy.shouldApplyLightSystemBars(Build.VERSION.SDK_INT, dark, root != null)) {
+            return;
+        }
+        root.post(() -> {
+            WindowInsetsController controller = root.getWindowInsetsController();
+            if (controller != null) {
                 controller.setSystemBarsAppearance(
                         WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
                         WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
                 );
             }
-        }
+        });
     }
 
     private void loadDevices(String reason) {
@@ -176,7 +183,7 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
         content.addView(deviceList);
         content.addView(space(16));
 
-        streamButton = button("Start Mock Stream", true);
+        streamButton = button("Start Stream", true);
         streamButton.setOnClickListener(v -> {
             if (streamSession.isStreaming()) {
                 stopStreaming();
@@ -249,7 +256,7 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
             statusText.setText(streamSession.statusMessage());
             statusText.animate().alpha(1f).setDuration(140).start();
         }).start();
-        streamButton.setText(streaming ? "Stop Streaming" : waiting ? "Waiting for Permission" : "Start Mock Stream");
+        streamButton.setText(streaming ? "Stop Streaming" : waiting ? "Waiting for Permission" : "Start Stream");
         streamButton.setBackground(streaming ? rounded(error(), errorDark()) : waiting ? rounded(warning(), warning()) : gradient(accent(), accent2(), dp(8)));
         streamButton.setEnabled(canStart || streaming);
         streamButton.setAlpha((canStart || streaming) ? 1f : 0.55f);

@@ -28,7 +28,7 @@ public final class DualBTService extends Service {
     public void onCreate() {
         super.onCreate();
         createChannel();
-        captureEngine = new AndroidPlaybackCaptureEngine();
+        captureEngine = new AndroidPlaybackCaptureEngine(this);
         AppLogger.i("DualBTService", "Service created");
     }
 
