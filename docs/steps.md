@@ -627,3 +627,39 @@
 ## 2026-05-24 18:17:54 IST - Retry Git-Only Push And Opencode Fallback
 - Action: Ran `./scripts/push-github.sh`, checked the local `opencode` command, and attempted a narrow `opencode run` fallback that should only run the push helper.
 - Result: The Git-only script still stopped at the DNS preflight because `github.com` does not resolve from this shell. The opencode fallback failed before running the push with `Failed to run the query 'PRAGMA wal_checkpoint(PASSIVE)'`.
+
+## 2026-05-24 18:24:10 IST - Commit Opencode Fallback Blocker Documentation
+- Action: Ran `git add -A`, confirmed staged status, and committed `docs: record opencode fallback blocker`.
+- Result: Local commit `71af00b` records the opencode WAL checkpoint failure separately from the watchdog polling work.
+
+## 2026-05-24 18:25:20 IST - Add Red Test For Watchdog Controller
+- Action: Added `scripts/test-codex-watchdog-control.sh` to verify start, status, heartbeat logging, stop, and stopped-status behavior for a background watchdog controller.
+- Result: The controller test failed for the expected TDD reason: `scripts/codex-watchdog-control.sh` does not exist yet.
+
+## 2026-05-24 18:26:40 IST - Implement Watchdog Controller
+- Action: Added `scripts/codex-watchdog-control.sh`, documented start/status/stop usage, ignored the generated PID file, and updated the watchdog changelog entry.
+- Result: The watchdog can now be managed as a detached polling process, pending controller test verification.
+
+## 2026-05-24 18:35:45 IST - Verify Watchdog Controller
+- Action: Ran `scripts/test-codex-watchdog-control.sh` and syntax checks for the watchdog scripts.
+- Result: Syntax checks passed, but the controller test failed with `Permission denied` because `scripts/codex-watchdog-control.sh` was not executable after the interrupted creation step. Problem logged in `docs/problems/2026-05-24-watchdog-control-permission-denied.md`.
+
+## 2026-05-24 18:36:30 IST - Re-run Watchdog Controller Test After Permission Fix
+- Action: Set `scripts/codex-watchdog-control.sh` executable and reran `scripts/test-codex-watchdog-control.sh`.
+- Result: The test still exited with code 1 and no visible output. Problem logged in `docs/problems/2026-05-24-watchdog-control-test-silent-failure.md` before tracing.
+
+## 2026-05-24 18:37:20 IST - Fix Watchdog Controller Test Harness
+- Action: Traced `scripts/test-codex-watchdog-control.sh` with `bash -x`, found the final expected stopped-status failure was leaking as the script exit code, and rewrote both expected-failure assertions as explicit `if` blocks. Added solution docs for the executable-bit and silent-test failures.
+- Result: The watchdog controller test now treats stopped status as expected behavior, pending re-verification.
+
+## 2026-05-24 18:49:24 IST - Resume Device Install Validation
+- Action: Checked external Git status, connected ADB devices, available `scrcpy` commands, and timestamp before device validation.
+- Result: Device `d1bc5c4a` is connected. `scrcpy` is available at `/home/astra/.local/bin/scrcpy`. The worktree contains only watchdog controller changes from the interrupted turn.
+
+## 2026-05-24 18:49:35 IST - Verify Watchdog Controller Before Device Testing
+- Action: Ran `scripts/test-codex-watchdog.sh`, `scripts/test-codex-watchdog-control.sh`, and shell syntax checks for the watchdog scripts.
+- Result: Both watchdog tests exited with code 0, and all shell syntax checks passed.
+
+## 2026-05-24 18:50:05 IST - Commit And Start Watchdog Controller
+- Action: Ran `git add -A`, confirmed staged status, committed `feat: add codex watchdog controller`, and started the watchdog controller.
+- Result: Local commit `df61180` contains the watchdog controller. The detached watchdog is running with PID 11 and logs to `docs/codex-watchdog.log`.

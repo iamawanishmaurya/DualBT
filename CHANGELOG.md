@@ -6,6 +6,7 @@ All notable changes to DualBT will be documented in this file.
 
 ### Added
 - Added a tested Codex watchdog polling utility that records one-minute heartbeat lines for long-running work.
+- Added a watchdog controller for starting, checking, tailing, and stopping the detached heartbeat process.
 - Added watchdog documentation and ignored the generated heartbeat log file.
 
 ## [0.2.8] - 2026-05-24
