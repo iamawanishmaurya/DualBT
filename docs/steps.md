@@ -1183,3 +1183,8 @@
 
 - Action: Recorded the user-confirmed physical speaker results and created solution docs for YouTube capture volume control, recreated-activity volume controls, shell service export safety, and the MIUI UIAutomator warning.
 - Result: User confirmed the speakers got quieter after lowering hardware volume and louder after raising it; solution docs now link back to the matching problem files.
+
+## 2026-05-24 22:51:44 IST - Commit Physical YouTube Volume Controls
+
+- Action: Ran `git add -A`, confirmed staged status, and committed the physical-device speaker routing, YouTube volume-control, tests, changelog, and documentation updates.
+- Result: Created commit `2e782bf` with message `feat: add physical youtube volume controls`.
