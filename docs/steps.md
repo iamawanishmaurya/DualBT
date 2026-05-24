@@ -623,3 +623,7 @@
 ## 2026-05-24 18:17:02 IST - Commit And Tag Watchdog Polling Utility
 - Action: Ran `git add -A`, confirmed staged status, committed `feat: add codex watchdog polling`, and created local tag `v0.2.9`.
 - Result: The watchdog utility, tests, documentation, changelog entry, and generated-log ignore rule are committed locally and tagged for the next patch release.
+
+## 2026-05-24 18:17:54 IST - Retry Git-Only Push And Opencode Fallback
+- Action: Ran `./scripts/push-github.sh`, checked the local `opencode` command, and attempted a narrow `opencode run` fallback that should only run the push helper.
+- Result: The Git-only script still stopped at the DNS preflight because `github.com` does not resolve from this shell. The opencode fallback failed before running the push with `Failed to run the query 'PRAGMA wal_checkpoint(PASSIVE)'`.
