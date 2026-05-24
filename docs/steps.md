@@ -1188,3 +1188,8 @@
 
 - Action: Ran `git add -A`, confirmed staged status, and committed the physical-device speaker routing, YouTube volume-control, tests, changelog, and documentation updates.
 - Result: Created commit `2e782bf` with message `feat: add physical youtube volume controls`.
+
+## 2026-05-24 22:52:48 IST - Push v0.2.18 To GitHub
+
+- Action: Tagged the release as `v0.2.18` and ran `./scripts/push-github.sh`.
+- Result: Git pushed branch `implementation/dualbt-v0.1.0` to `https://github.com/iamawanishmaurya/DualBT.git` and pushed new tag `v0.2.18`.
