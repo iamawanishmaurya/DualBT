@@ -29,3 +29,4 @@ externalNativeBuild/
 
 # Local testing sandboxes
 testing/
+docs/codex-watchdog.log

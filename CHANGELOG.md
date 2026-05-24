@@ -2,6 +2,12 @@
 
 All notable changes to DualBT will be documented in this file.
 
+## [0.2.9] - 2026-05-24
+
+### Added
+- Added a tested Codex watchdog polling utility that records one-minute heartbeat lines for long-running work.
+- Added watchdog documentation and ignored the generated heartbeat log file.
+
 ## [0.2.8] - 2026-05-24
 
 ### Added

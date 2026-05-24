@@ -587,3 +587,39 @@
 ## 2026-05-24 18:02:11 IST - Compare Codex Shell Against Opencode GitHub Success
 - Action: Checked GitHub DNS/HTTPS, `gh auth status`, `gh repo view iamawanishmaurya/testing01`, and the opencode-created `/home/astra/test` Git repo from this Codex shell.
 - Result: The `/home/astra/test` repo exists locally with remote `https://github.com/iamawanishmaurya/testing01.git`, but this shell cannot run `git ls-remote`, `gh repo view`, or `curl -I https://github.com/` because GitHub DNS/API access still fails here. This confirms opencode used a different network/auth environment than the Codex shell.
+
+## 2026-05-24 18:11:19 IST - Start Codex Watchdog Polling Utility
+- Action: Inspected the current Git status, scripts directory, and recent step log before adding a watchdog polling utility.
+- Result: The external Git metadata is usable, the worktree is clean, and the repo currently only has `scripts/push-github.sh`. The new utility will be added as an explicit repo script rather than an unmanaged background process.
+
+## 2026-05-24 18:12:10 IST - Add Red Test For Codex Watchdog
+- Action: Added `scripts/test-codex-watchdog.sh` to verify that the watchdog script syntax is valid, emits two heartbeat lines, includes a heartbeat marker, and records a successful status field.
+- Result: The test failed for the expected TDD reason: `scripts/codex-watchdog.sh` does not exist yet.
+
+## 2026-05-24 18:13:06 IST - Implement And Verify Basic Codex Watchdog
+- Action: Added `scripts/codex-watchdog.sh`, documented it in `docs/codex-watchdog.md`, ignored the default generated watchdog log, marked the script executable, and ran the watchdog test.
+- Result: The watchdog emitted two one-second heartbeat lines during the bounded test run and the initial test passed.
+
+## 2026-05-24 18:14:00 IST - Add Red Test For Watchdog Failure Exit Codes
+- Action: Extended `scripts/test-codex-watchdog.sh` to run the watchdog once with a failing health command and assert that the original exit code and `status=fail` are recorded.
+- Result: The test failed for the expected TDD reason: the watchdog recorded `status=fail` but returned and logged exit code 0 instead of preserving the failing command's exit code 7.
+
+## 2026-05-24 18:14:50 IST - Preserve Watchdog Health Check Exit Codes
+- Action: Updated `scripts/codex-watchdog.sh` to capture the status command output and exit code without masking the original exit code, and switched the health command runner from login shell mode to normal shell mode.
+- Result: Failed health checks can now report and return their original exit code, pending re-verification.
+
+## 2026-05-24 18:15:04 IST - Verify Codex Watchdog Utility
+- Action: Re-ran `scripts/test-codex-watchdog.sh`, checked both watchdog scripts with `bash -n`, and ran a one-shot smoke test using the default Git status health check with a temporary log file.
+- Result: The watchdog test passed, including successful heartbeat logging and failed-health-check exit code preservation. The syntax checks passed, and the one-shot smoke test recorded `status=ok exit=0`.
+
+## 2026-05-24 18:16:20 IST - Record Watchdog Release Notes
+- Action: Added a `0.2.9` changelog entry for the Codex watchdog polling utility.
+- Result: The project release notes now describe the watchdog script, its test coverage, and the ignored generated heartbeat log.
+
+## 2026-05-24 18:16:32 IST - Re-verify Watchdog Before Commit
+- Action: Re-ran `scripts/test-codex-watchdog.sh`, checked watchdog shell syntax with `bash -n`, and checked Git status.
+- Result: The watchdog test exited with code 0, syntax checks passed, and the staged scope is limited to the watchdog utility, test, documentation, changelog, step log, and `.gitignore`.
+
+## 2026-05-24 18:17:02 IST - Commit And Tag Watchdog Polling Utility
+- Action: Ran `git add -A`, confirmed staged status, committed `feat: add codex watchdog polling`, and created local tag `v0.2.9`.
+- Result: The watchdog utility, tests, documentation, changelog entry, and generated-log ignore rule are committed locally and tagged for the next patch release.
