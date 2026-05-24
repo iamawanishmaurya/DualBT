@@ -21,6 +21,7 @@ public final class SpeakerCalibrationPlayer {
     private static final int DURATION_MS = 3_200;
 
     private final Context context;
+    private final SpeakerTestRunGate runGate = new SpeakerTestRunGate();
     private AudioTrack currentTrack;
     private AudioManager activeAudioManager;
     private boolean communicationFallbackActive;
@@ -31,8 +32,17 @@ public final class SpeakerCalibrationPlayer {
     }
 
     public synchronized void play(StreamDevice device, int speakerNumber) {
-        stop();
-        Thread worker = new Thread(() -> playBlocking(device, speakerNumber), "dualbt-speaker-test");
+        if (!runGate.tryStart()) {
+            AppLogger.w("SpeakerTest", "Test " + speakerNumber + " ignored because another calibration test is still running");
+            return;
+        }
+        Thread worker = new Thread(() -> {
+            try {
+                playBlocking(device, speakerNumber);
+            } finally {
+                runGate.finish();
+            }
+        }, "dualbt-speaker-test");
         worker.start();
     }
 
@@ -40,6 +50,7 @@ public final class SpeakerCalibrationPlayer {
         releaseTrack(currentTrack);
         currentTrack = null;
         stopCommunicationFallback();
+        runGate.finish();
     }
 
     private void playBlocking(StreamDevice device, int speakerNumber) {
@@ -52,13 +63,15 @@ public final class SpeakerCalibrationPlayer {
             }
             List<OutputBinding> outputs = bluetoothOutputs(audioManager);
             OutputBinding output = matchingOutput(device, outputs);
-            boolean communicationTrack = output == null;
-            if (communicationTrack) {
-                AudioDeviceInfo communicationDevice = startCommunicationFallback(audioManager, device);
-                if (communicationDevice != null) {
-                    output = new OutputBinding(communicationDevice);
-                }
+            if (output == null) {
+                AppLogger.w(
+                        "SpeakerTest",
+                        "Test " + speakerNumber + " blocked for " + routeName(device, speakerNumber)
+                                + ": Android exposes no direct media route for this speaker. Generic SCO fallback is disabled."
+                );
+                return;
             }
+            boolean communicationTrack = false;
             byte[] pcm = CalibrationTone.stereoSinePcm(
                     SAMPLE_RATE,
                     DURATION_MS,
@@ -162,7 +175,9 @@ public final class SpeakerCalibrationPlayer {
         if (matches.isEmpty() || matches.get(0) < 0 || matches.get(0) >= outputs.size()) {
             return null;
         }
-        return outputs.get(matches.get(0));
+        OutputBinding output = outputs.get(matches.get(0));
+        AudioOutputRouteMatcher.OutputDeviceDescriptor descriptor = descriptors(outputs).get(matches.get(0));
+        return AudioOutputRouteSupport.isDirectMediaRoute(descriptor) ? output : null;
     }
 
     private AudioDeviceInfo startCommunicationFallback(AudioManager audioManager, StreamDevice route) {

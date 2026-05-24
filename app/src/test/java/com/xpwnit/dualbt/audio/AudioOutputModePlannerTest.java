@@ -5,12 +5,12 @@ import java.util.List;
 
 public final class AudioOutputModePlannerTest {
     public static void main(String[] args) {
-        usesCommunicationFallbackForOneA2dpAndOneUnmatchedRoute();
+        avoidsCommunicationFallbackForOneA2dpAndOneUnmatchedRoute();
         keepsPureMediaModeWhenBothA2dpRoutesAreAvailable();
         avoidsFallbackWhenScoRouteIsUnavailable();
     }
 
-    private static void usesCommunicationFallbackForOneA2dpAndOneUnmatchedRoute() {
+    private static void avoidsCommunicationFallbackForOneA2dpAndOneUnmatchedRoute() {
         List<Integer> matches = Arrays.asList(1, -1);
         List<AudioOutputRouteMatcher.OutputDeviceDescriptor> outputs = Arrays.asList(
                 new AudioOutputRouteMatcher.OutputDeviceDescriptor("Redmi Note 9 Pro", "00:00:00:00:00:00", 7),
@@ -19,8 +19,8 @@ public final class AudioOutputModePlannerTest {
 
         AudioOutputModePlanner.Plan plan = AudioOutputModePlanner.plan(matches, outputs);
 
-        assertTrue(plan.useCommunicationFallback, "one unmatched route should use communication fallback when SCO exists");
-        assertEquals(1, plan.communicationRouteIndex, "unmatched route index should become communication route");
+        assertFalse(plan.useCommunicationFallback, "generic SCO fallback should not be treated as a second speaker");
+        assertEquals(-1, plan.communicationRouteIndex, "unsupported routes have no communication route");
     }
 
     private static void keepsPureMediaModeWhenBothA2dpRoutesAreAvailable() {

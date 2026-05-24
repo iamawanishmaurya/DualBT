@@ -2,6 +2,26 @@
 
 All notable changes to DualBT will be documented in this file.
 
+## [0.2.21] - 2026-05-24
+
+### Fixed
+- Blocked unsupported dual-speaker route sets in the activity before MediaProjection so the UI no longer stays in a false streaming state after the service rejects one exposed Bluetooth media route.
+- Added a user-visible route availability status when Android exposes fewer than two direct speaker routes.
+
+## [0.2.20] - 2026-05-24
+
+### Fixed
+- Added a calibration run gate so rapid `Test 1`/`Test 2` taps cannot release an active calibration `AudioTrack` while it is still writing PCM.
+
+## [0.2.19] - 2026-05-24
+
+### Fixed
+- Disabled the generic Bluetooth SCO fallback after physical testing showed it could make `Test 1` and `Test 2` beep the same Mini Boost speaker.
+- Added direct-route validation so streaming starts only when Android exposes two distinct non-SCO media output routes for the selected speakers.
+
+### Added
+- Added plain Java route-support tests for rejecting one A2DP route plus a generic SCO fallback.
+
 ## [0.2.18] - 2026-05-24
 
 ### Added

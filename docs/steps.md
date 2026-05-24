@@ -1193,3 +1193,143 @@
 
 - Action: Tagged the release as `v0.2.18` and ran `./scripts/push-github.sh`.
 - Result: Git pushed branch `implementation/dualbt-v0.1.0` to `https://github.com/iamawanishmaurya/DualBT.git` and pushed new tag `v0.2.18`.
+
+## 2026-05-24 22:58:29 IST - Log Same Speaker Routing Failure
+
+- Action: Inspected the current git/device state, reviewed DualBT logs and `dumpsys audio`, set Android media volume to `3/15` for about 20% testing, and logged the repeated physical routing failure.
+- Result: Added `docs/problems/2026-05-24-test-buttons-same-physical-speaker.md`; evidence shows `Test 2` is using a generic communication route rather than a second physical A2DP speaker route.
+
+## 2026-05-24 22:59:11 IST - Research Repeated Bluetooth Routing Failure
+
+- Action: Researched Android routing docs after the same one-speaker failure repeated.
+- Result: Found that `AudioRouting.setPreferredDevice()` is only a preference, Android's public `BluetoothA2dp` documentation states one connected A2DP device is supported at a time, AOSP multi-device routing relies on system APIs/vendor HAL support, and Android audio sharing requires LE Audio accessories.
+
+## 2026-05-24 23:01:11 IST - Add Failing Route Support Tests
+
+- Action: Added tests requiring two direct Bluetooth media routes and changed the planner test to reject the generic SCO fallback that was causing the same physical speaker to beep.
+- Result: The new route-support test failed as expected because `AudioOutputRouteSupport` does not exist yet.
+
+## 2026-05-24 23:02:55 IST - Disable Generic SCO Fallback
+
+- Action: Added `AudioOutputRouteSupport`, changed the router to require two direct non-SCO media routes, changed calibration to block unsupported routes instead of using generic SCO, bumped the app to v0.2.19, and ran the targeted route tests.
+- Result: `AudioOutputModePlannerTest` and `AudioOutputRouteSupportTest` exited with code 0.
+
+## 2026-05-24 23:03:23 IST - Run Full Plain Java Tests For v0.2.19
+
+- Action: Compiled and ran every `app/src/test/java/**/*Test.java` main after disabling the generic SCO fallback.
+- Result: All plain Java tests exited with code 0.
+
+## 2026-05-24 23:04:46 IST - Build v0.2.19 Direct Route APK
+
+- Action: Ran the offline clean debug Gradle build after disabling the generic SCO fallback.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 56s.
+
+## 2026-05-24 23:05:21 IST - Install v0.2.19 And Set Test Volume
+
+- Action: Verified APK badging, installed the v0.2.19 debug APK on physical device `d1bc5c4a`, checked package metadata, and set Android media volume to `3/15`.
+- Result: APK metadata and installed package report versionName `0.2.19`, versionCode `20`; `adb install -r` completed with `Success`; test volume is about 20%.
+
+## 2026-05-24 23:08:15 IST - Log Calibration Overlap Race
+
+- Action: Selected both Mini Boost speakers on v0.2.19, tapped `Test 1` and then `Test 2`, and inspected DualBT logs.
+- Result: `Test 2` was blocked as intended because no direct media route exists, but rapid taps caused `Test 1` to fail with `Unable to retrieve AudioTrack pointer for write()`; added `docs/problems/2026-05-24-calibration-overlap-releases-active-track.md`.
+
+## 2026-05-24 23:09:49 IST - Add Failing Calibration Run Gate Test
+
+- Action: Added `SpeakerTestRunGateTest` to require calibration taps to be ignored while a test is already running, then compiled it before production code.
+- Result: The test failed as expected because `SpeakerTestRunGate` does not exist yet.
+
+## 2026-05-24 23:11:05 IST - Add Calibration Run Gate
+
+- Action: Added `SpeakerTestRunGate`, wired `SpeakerCalibrationPlayer` to ignore overlapping test taps, bumped the app to v0.2.20, and ran `SpeakerTestRunGateTest`.
+- Result: `SpeakerTestRunGateTest` exited with code 0.
+
+## 2026-05-24 23:11:38 IST - Run Full Plain Java Tests For v0.2.20
+
+- Action: Compiled and ran every `app/src/test/java/**/*Test.java` main after adding the calibration run gate.
+- Result: All plain Java tests exited with code 0.
+
+## 2026-05-24 23:12:59 IST - Build v0.2.20 Calibration Gate APK
+
+- Action: Ran the offline clean debug Gradle build after adding the calibration run gate.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 47s.
+
+## 2026-05-24 23:13:44 IST - Install v0.2.20 And Reset Test Volume
+
+- Action: Verified APK badging, installed the v0.2.20 debug APK on physical device `d1bc5c4a`, checked package metadata, and set Android media volume to `3/15`.
+- Result: APK metadata and installed package report versionName `0.2.20`, versionCode `21`; `adb install -r` completed with `Success`; test volume remains about 20%.
+
+## 2026-05-24 23:15:29 IST - Verify Calibration Route Blocking
+
+- Action: Repeated Mini Boost selection on v0.2.20, tapped `Test 1`, quickly tapped `Test 2`, then tapped `Test 2` again after `Test 1` finished.
+- Result: The overlap tap was ignored without an `AudioTrack` pointer error, `Test 1` completed on the one exposed media route, and standalone `Test 2` was blocked because Android exposes no direct media route for `Mini boost 2`.
+
+## 2026-05-24 23:17:04 IST - Verify Streaming Fails Closed
+
+- Action: Pressed `Start Stream`, accepted MediaProjection, and inspected DualBT service logs plus running services.
+- Result: DualBT blocked streaming because Android exposes only `1/2` direct media route(s), stopped the foreground service, and did not leave `DualBTService` running.
+
+## 2026-05-24 23:20:12 IST - Document One-Speaker Routing Fix
+
+- Action: Created solution notes for the same-speaker test-button failure, the overlapping calibration `AudioTrack` race, and the classic A2DP one-speaker playback limitation.
+- Result: The problem/solution documentation now records the researched alternatives, chosen fail-closed route validation, physical-device verification, and commands run for the v0.2.20 fix.
+
+## 2026-05-24 23:22:18 IST - Log Plain Java Verification Command Failure
+
+- Action: Ran a too-broad local `javac` verification command that included Android framework-dependent production classes before the Android SDK classpath was present.
+- Result: The compile failed on missing `android.*` packages; added `docs/problems/2026-05-24-plain-java-verification-android-classpath.md` before changing the verification strategy.
+
+## 2026-05-24 23:23:16 IST - Verify Plain Java Tests For v0.2.20
+
+- Action: Re-ran the plain Java test suite with a generated test-source list and `-sourcepath app/src/main/java:app/src/test/java`, then documented the verification-command fix.
+- Result: All plain Java tests exited with code 0; `docs/solutions/plain-java-verification-android-classpath.md` records why Android framework files must be verified by Gradle instead of raw `javac`.
+
+## 2026-05-24 23:24:36 IST - Build v0.2.20 APK
+
+- Action: Ran the offline clean debug Gradle build with the configured offline Maven repo, debug keystore, Android SDK paths, and Gradle cache settings.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 39s.
+
+## 2026-05-24 23:25:18 IST - Install v0.2.20 And Set Test Volume
+
+- Action: Inspected debug APK badging, installed `app-debug.apk` on physical device `d1bc5c4a`, checked installed package metadata, and set Android media volume to `3/15`.
+- Result: APK and installed package both report versionName `0.2.20`, versionCode `21`; `adb install -r` returned `Success`; media volume is `3/15` for about 20% testing.
+
+## 2026-05-24 23:28:11 IST - Verify Installed Stream Route Blocking
+
+- Action: Launched the freshly installed v0.2.20 app, selected `Mini boost 1` and `Mini boost 2`, started streaming, accepted MediaProjection, inspected logs, checked running services, and rechecked media volume.
+- Result: The installed app synced output volume to `20%`, blocked streaming because Android exposes only `1/2` direct media route(s), stopped `DualBTService`, and kept Android media volume at `3/15`.
+
+## 2026-05-24 23:32:10 IST - Log Streaming UI State Mismatch
+
+- Action: Dumped the v0.2.20 UI after the service rejected the unsupported route set.
+- Result: The service was stopped, but the activity still displayed `Streaming to 2 speaker(s)`; added `docs/problems/2026-05-24-ui-stays-streaming-after-route-block.md` before fixing the activity-side route check.
+
+## 2026-05-24 23:35:28 IST - Add Activity Route Availability Gate
+
+- Action: Added `AndroidAudioRouteAvailability`, checked route support in `MainActivity` before MediaProjection/stream confirmation, added a visible unsupported-route status, and bumped the app to v0.2.21.
+- Result: Unsupported two-speaker selections are now blocked before the activity enters streaming state, pending fresh test/build/device verification.
+
+## 2026-05-24 23:36:08 IST - Verify Plain Java Tests For v0.2.21
+
+- Action: Re-ran the generated-source-list plain Java test suite after adding the activity route availability gate.
+- Result: All plain Java tests exited with code 0.
+
+## 2026-05-24 23:37:12 IST - Build v0.2.21 APK
+
+- Action: Ran the offline clean debug Gradle build after adding the activity-side route availability check.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 57s.
+
+## 2026-05-24 23:38:04 IST - Install v0.2.21 And Reset Test Volume
+
+- Action: Verified APK badging, installed v0.2.21 on physical device `d1bc5c4a`, force-stopped the old process, set media volume to `3/15`, and checked installed package metadata.
+- Result: `adb install -r` returned `Success`; installed package reports versionName `0.2.21`, versionCode `22`; media volume is `3/15`.
+
+## 2026-05-24 23:41:18 IST - Verify Installed Route Block And Test 2 Block
+
+- Action: Selected `Mini boost 1` and `Mini boost 2` in the installed v0.2.21 UI, tapped `Start Stream`, dumped the UI, checked logs/services/volume, then tapped `Test 2`.
+- Result: The activity blocked start before MediaProjection, displayed `Only 1/2 speaker routes available`, left `DualBTService` stopped, kept volume at `3/15`, and `Test 2` was blocked instead of routing to the same physical speaker.
+
+## 2026-05-24 23:43:02 IST - Update Final Solution Notes
+
+- Action: Updated the one-speaker and calibration solution docs to reference the corrected generated-source-list test command and the final v0.2.21 activity-side route block.
+- Result: Solution documentation now matches the verified final implementation and commands.

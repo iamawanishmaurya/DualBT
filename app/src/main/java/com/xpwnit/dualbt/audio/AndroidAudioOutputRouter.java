@@ -42,6 +42,15 @@ public final class AndroidAudioOutputRouter {
         List<OutputBinding> outputs = bluetoothOutputs(audioManager);
         List<AudioOutputRouteMatcher.OutputDeviceDescriptor> descriptors = descriptors(outputs);
         List<Integer> matches = AudioOutputRouteMatcher.match(routePlan.targets(), descriptors);
+        if (!AudioOutputRouteSupport.hasTwoDirectMediaRoutes(matches, descriptors)) {
+            AppLogger.w(
+                    "AudioOutputRouter",
+                    "Dual Bluetooth output blocked: Android exposes "
+                            + AudioOutputRouteSupport.directMediaRouteCount(matches, descriptors)
+                            + "/2 direct media route(s). Generic SCO fallback is disabled because it can route both tracks to the same speaker."
+            );
+            return false;
+        }
         AudioOutputModePlanner.Plan outputPlan = AudioOutputModePlanner.plan(matches, descriptors);
         AudioDeviceInfo communicationDevice = null;
         if (outputPlan.useCommunicationFallback) {

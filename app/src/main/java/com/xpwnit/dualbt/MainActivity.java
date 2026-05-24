@@ -30,6 +30,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import com.xpwnit.dualbt.audio.AndroidAudioRouteAvailability;
 import com.xpwnit.dualbt.audio.SpeakerCalibrationPlayer;
 import com.xpwnit.dualbt.bt.AndroidBluetoothScanner;
 import com.xpwnit.dualbt.logging.AppLogger;
@@ -68,6 +69,7 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
     private int outputVolumePercent = 100;
     private boolean emulatorMode = true;
     private boolean dark;
+    private String statusOverride;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -307,8 +309,9 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
         boolean waiting = streamSession.isAwaitingCapturePermission();
         boolean canStart = streamSession.canStart();
         countBadge.setText(count + "/" + REQUIRED_SPEAKERS);
+        String status = statusOverride == null ? streamSession.statusMessage() : statusOverride;
         statusText.animate().alpha(0f).setDuration(90).withEndAction(() -> {
-            statusText.setText(streamSession.statusMessage());
+            statusText.setText(status);
             statusText.animate().alpha(1f).setDuration(140).start();
         }).start();
         streamButton.setText(streaming ? "Stop Streaming" : waiting ? "Waiting for Permission" : "Start Stream");
@@ -397,6 +400,9 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
     private void toggle(StreamDevice device) {
         boolean wasSelected = streamSession.isSelected(device);
         boolean changed = streamSession.toggle(device);
+        if (changed) {
+            statusOverride = null;
+        }
         if (changed && wasSelected) {
             AppLogger.i("MainViewModel", "Device deselected: " + device.name);
         } else if (changed) {
@@ -462,13 +468,25 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
 
     private void refreshDevices() {
         AppLogger.i("MainViewModel", "Refresh requested");
+        statusOverride = null;
         loadDevices("refresh");
         render();
     }
 
     private void startStreaming() {
+        if (streamSession.canStart()) {
+            StreamRoutePlan routePlan = StreamRoutePlan.fromSelected(streamSession.selectedDevices(), REQUIRED_SPEAKERS);
+            AndroidAudioRouteAvailability.Result availability = AndroidAudioRouteAvailability.check(this, routePlan);
+            if (!availability.supported) {
+                statusOverride = "Only " + availability.directMediaRoutes + "/2 speaker routes available";
+                AppLogger.w("MainViewModel", "Start blocked: " + availability.message);
+                render();
+                return;
+            }
+        }
         StreamSessionController.StartResult result = streamSession.start();
         if (result == StreamSessionController.StartResult.CAPTURE_PERMISSION_REQUIRED) {
+            statusOverride = null;
             AppLogger.i("MainViewModel", "Capture permission required before streaming to " + streamSession.selectedNames());
             render();
             requestCapturePermission();
@@ -486,6 +504,7 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
 
     private void stopStreaming() {
         streamSession.stop();
+        statusOverride = null;
         stopService(new Intent(this, DualBTService.class));
         AppLogger.i("MainViewModel", "Stopping streaming");
         render();
@@ -510,14 +529,24 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
 
     private void handleCapturePermissionResult(int resultCode, Intent data) {
         if (resultCode == RESULT_OK && data != null) {
+            StreamRoutePlan routePlan = StreamRoutePlan.fromSelected(streamSession.selectedDevices(), REQUIRED_SPEAKERS);
+            AndroidAudioRouteAvailability.Result availability = AndroidAudioRouteAvailability.check(this, routePlan);
+            if (!availability.supported) {
+                streamSession.cancelCapturePermission();
+                statusOverride = "Only " + availability.directMediaRoutes + "/2 speaker routes available";
+                AppLogger.w("MainViewModel", "Capture permission accepted but start blocked: " + availability.message);
+                render();
+                return;
+            }
             if (streamSession.confirmCapturePermission()) {
-                StreamRoutePlan routePlan = StreamRoutePlan.fromSelected(streamSession.selectedDevices(), REQUIRED_SPEAKERS);
+                statusOverride = null;
                 AppLogger.i("MainViewModel", "Capture permission granted; starting streaming to " + routePlan.displayNames());
                 startDualBTService(resultCode, data, routePlan);
             } else {
                 AppLogger.w("MainViewModel", "Capture permission result ignored because no stream start is pending");
             }
         } else if (streamSession.cancelCapturePermission()) {
+            statusOverride = null;
             AppLogger.w("MainViewModel", "Capture permission denied; streaming not started");
         } else {
             AppLogger.w("MainViewModel", "Capture permission denial ignored because no stream start is pending");
