@@ -583,3 +583,7 @@
 ## 2026-05-24 17:51:02 IST - Retry Plain Git Push After Metadata Restore
 - Action: Retried `git push -u origin implementation/dualbt-v0.1.0` using `GIT_DIR=/tmp/DualBT.git` and `GIT_WORK_TREE=/home/astra/codex/DualBT`.
 - Result: Push failed again with `fatal: unable to access 'https://github.com/iamawanishmaurya/DualBT.git/': Could not resolve host: github.com`. The host-side Tailscale removal changed `/etc/resolv.conf`, but DNS for GitHub is still not working inside this shell.
+
+## 2026-05-24 18:02:11 IST - Compare Codex Shell Against Opencode GitHub Success
+- Action: Checked GitHub DNS/HTTPS, `gh auth status`, `gh repo view iamawanishmaurya/testing01`, and the opencode-created `/home/astra/test` Git repo from this Codex shell.
+- Result: The `/home/astra/test` repo exists locally with remote `https://github.com/iamawanishmaurya/testing01.git`, but this shell cannot run `git ls-remote`, `gh repo view`, or `curl -I https://github.com/` because GitHub DNS/API access still fails here. This confirms opencode used a different network/auth environment than the Codex shell.
