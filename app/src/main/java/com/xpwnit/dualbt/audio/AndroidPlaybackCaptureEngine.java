@@ -23,6 +23,7 @@ public final class AndroidPlaybackCaptureEngine {
     private MediaProjection.Callback projectionCallback;
     private Thread captureThread;
     private volatile boolean running;
+    private volatile float outputGain = 1.0f;
     private long chunksRead;
 
     public AndroidPlaybackCaptureEngine(Context context) {
@@ -103,6 +104,11 @@ public final class AndroidPlaybackCaptureEngine {
         return running;
     }
 
+    public void setOutputGain(float gain) {
+        outputGain = clampGain(gain);
+        AppLogger.i("CaptureEngine", "Output gain set to " + Math.round(outputGain * 100.0f) + "%");
+    }
+
     private AudioPlaybackCaptureConfiguration captureConfiguration(MediaProjection projection) {
         AudioPlaybackCaptureConfiguration.Builder builder =
                 new AudioPlaybackCaptureConfiguration.Builder(projection);
@@ -135,6 +141,9 @@ public final class AndroidPlaybackCaptureEngine {
             int bytesRead = currentRecord.read(sharedBuffer, 0, sharedBuffer.length);
             if (bytesRead > 0) {
                 splitter.copyToOutputs(sharedBuffer, bytesRead, firstOutput, secondOutput);
+                float gain = outputGain;
+                PcmGain.applyInPlace(firstOutput, bytesRead, gain);
+                PcmGain.applyInPlace(secondOutput, bytesRead, gain);
                 outputRouter.write(firstOutput, secondOutput, bytesRead);
                 chunksRead++;
                 if (chunksRead == 1 || chunksRead % 500 == 0) {
@@ -144,6 +153,13 @@ public final class AndroidPlaybackCaptureEngine {
                 AppLogger.w("CaptureEngine", "AudioRecord read returned " + bytesRead);
             }
         }
+    }
+
+    private float clampGain(float gain) {
+        if (Float.isNaN(gain) || Float.isInfinite(gain)) {
+            return 1.0f;
+        }
+        return Math.max(0.0f, Math.min(2.0f, gain));
     }
 
     private synchronized void stopInternal(boolean stopProjection) {

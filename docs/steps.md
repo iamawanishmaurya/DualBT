@@ -892,6 +892,50 @@
 - Action: Ran `scripts/test-dump-ui-safe.sh` against the fake ADB harness.
 - Result: The test exited with code 0 and produced a valid temporary UI XML file, confirming the MIUI `theme_compatibility.xml` warning wrapper still preserves valid hierarchy output.
 
+## 2026-05-24 21:42:58 IST - Restart Dual Speaker Playback Investigation
+- Action: Located the attached `music.webm`, checked repository state, and inspected current Bluetooth and audio routing diagnostics for the two Mini Boost speakers.
+- Result: `music.webm` exists at `/home/astra/codex/DualBT/music.webm` and `/home/astra/music.webm` as a 112 MB WebM file. Both `Mini boost 4` speakers remain connected, but `dumpsys audio` shows two active DualBT `AudioTrack` players both routed to device id `7083`, with only one connected A2DP media sink exposed.
+
+## 2026-05-24 21:43:20 IST - Research Repeated One-Speaker A2DP Failure
+- Action: Because the same one-speaker failure occurred again, researched Android/AOSP audio routing behavior and possible ways to support two simultaneous output devices.
+- Result: Found that public `AudioRouting.setPreferredDevice()` is only a preference and must be verified with `getRoutedDevice()`, `AudioManager.getDevices(GET_DEVICES_OUTPUTS)` lists currently exposed sink devices, AOSP combined audio routing uses system APIs/vendor HAL support for multiple preferred media devices, and LE Audio broadcast is the standards-based Android path for synchronized one-to-many audio.
+
+## 2026-05-24 21:43:45 IST - Log Classic A2DP One-Speaker Playback Problem
+- Action: Created a dedicated problem record for the repeated physical playback failure before attempting any further fixes.
+- Result: Added `docs/problems/2026-05-24-classic-a2dp-one-speaker-playback.md` with exact routing evidence, reproduction steps, environment, and first hypothesis.
+
+## 2026-05-24 21:46:00 IST - Add Red Tests For Speaker Aliases And Routing Fallback
+- Action: Added tests for duplicate Mini Boost display aliases and for choosing a communication-route fallback when Android exposes one A2DP media route plus a Bluetooth SCO route.
+- Result: The Bluetooth catalog test failed as expected: `expected Mini boost 1 but got Mini boost 4`, confirming duplicate same-name speakers are not yet labeled distinctly.
+
+## 2026-05-24 21:50:10 IST - Implement Mini Boost Aliases And Communication Fallback
+- Action: Updated the Bluetooth catalog to label duplicate `Mini boost 4` rows as `Mini boost 1` and `Mini boost 2`, added an output mode planner, added an experimental A2DP plus communication-SCO fallback in `AndroidAudioOutputRouter`, ignored local `music.webm`, and bumped the app to `0.2.12`.
+- Result: The app can now distinguish the two same-name physical speakers in UI/logs and will try a public Android communication route for the unmatched speaker when only one A2DP media route is exposed.
+
+## 2026-05-24 21:51:00 IST - Run Alias And Fallback Tests
+- Action: Compiled and ran every plain Java test after implementing the duplicate-name alias and output fallback planner.
+- Result: All plain Java tests exited with code 0.
+
+## 2026-05-24 21:52:10 IST - Build v0.2.12 Debug APK
+- Action: Ran the offline Gradle clean debug build with the existing offline Maven, SDK, debug keystore, and Gradle cache environment.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 46s and produced the v0.2.12 debug APK.
+
+## 2026-05-24 21:53:00 IST - Install v0.2.12 And Prepare Test Song
+- Action: Verified APK badging, installed the rebuilt APK on `d1bc5c4a`, and converted the attached `music.webm` to `/tmp/dualbt-test-music.mp3` for Android playback testing.
+- Result: APK reports versionName `0.2.12` and versionCode `13`; `adb install -r` completed with `Success`; the MP3 test file was created at 6.5 MB.
+
+## 2026-05-24 21:54:00 IST - Launch v0.2.12 And Confirm Mini Boost Aliases
+- Action: Pushed `/tmp/dualbt-test-music.mp3` to `/sdcard/Download/dualbt-test-music.mp3`, launched DualBT, and captured `/tmp/dualbt-v0212-launch.xml`.
+- Result: DualBT shows the two same-name physical speakers as `Mini boost 1` (`41:42:26:B3:62:1C`) and `Mini boost 2` (`41:42:2E:9E:5E:AE`), with the original `Mini boost 4` name retained in the subtitle.
+
+## 2026-05-24 21:55:00 IST - Select Mini Boost 1 And 2
+- Action: Tapped the `Mini boost 1` and `Mini boost 2` rows in DualBT and captured `/tmp/dualbt-v0212-selected.xml`.
+- Result: DualBT reports `Ready to stream`, `2/2`, and both physical Mini Boost rows show `Selected`.
+
+## 2026-05-24 21:57:12 IST - Start v0.2.12 Dual Route Stream
+- Action: Scrolled to `Start Stream`, accepted the MediaProjection prompt, captured `/tmp/dualbt-v0212-streaming.xml`, and tailed DualBT's app-private log.
+- Result: DualBT started streaming to `Mini boost 1` and `Mini boost 2`. The router selected media/A2DP for `Mini boost 1` and communication-SCO fallback for `Mini boost 2`; both tracks started and `PCM writes=1` was logged.
+
 ## 2026-05-24 21:21:10 IST - Stage Physical Test And Routing Changes
 - Action: Ran `git add -A` using `GIT_DIR=/tmp/DualBT.git` and `GIT_WORK_TREE=/home/astra/codex/DualBT`, then checked `git status --short --branch`.
 - Result: Git staged the v0.2.11 APK metadata, Java output router, route-matching tests, physical-test docs, problem/solution docs, and safe UI dump scripts; the ignored `testing/scrcpy` directory did not appear in the staged status.
@@ -899,3 +943,243 @@
 ## 2026-05-24 21:21:35 IST - Commit Physical Dual Output Routing
 - Action: Committed the staged physical-device validation, Java output routing, tests, scripts, and docs.
 - Result: Created commit `80c229e` with message `feat: add physical dual output routing`.
+
+## 2026-05-24 21:52:56 IST - Verify Music Playback State
+
+- Action: Checked the attached-device state, foreground activity, media sessions, and git status before continuing the speaker playback test.
+- Result: Device `d1bc5c4a` is connected and DualBT changes are still local; Android is still showing `ResolverActivity` and `cmd media_session list-sessions` has no active sessions, so the test song has not actually started yet.
+
+## 2026-05-24 21:53:11 IST - Log Steps Append Context Mismatch
+
+- Action: Logged the failed `docs/steps.md` patch context in `docs/problems/2026-05-24-steps-log-context-mismatch.md` before retrying the documentation append.
+- Result: The problem is documented; the docs checkpoint was appended using the actual end-of-file context.
+
+## 2026-05-24 21:53:44 IST - Resolve Steps Append Context Mismatch
+
+- Action: Created `docs/solutions/steps-log-context-mismatch.md` with the failed context, working append method, rationale, and commands run.
+- Result: The documentation-only patch issue is closed and linked to its problem record.
+
+## 2026-05-24 21:54:59 IST - Start Real Test Music Playback
+
+- Action: Started `/sdcard/Download/dualbt-test-music.mp3` through `com.miui.player/.ui.MusicActivity` and checked the media session plus `dumpsys audio` playback configuration.
+- Result: MIUI Music is foreground and its session is `PlaybackState state=3`; AudioService shows the source player started on device id `7083`, while DualBT has two active output tracks on device ids `7083` and `7073`.
+
+## 2026-05-24 21:57:00 IST - Log No-Audible-Song Physical Result
+
+- Action: Recorded the user feedback that no song was audible even though Android reported an active MIUI Music session and active DualBT output tracks.
+- Result: Added `docs/problems/2026-05-24-playing-session-no-audible-song.md` and identified per-speaker calibration playback as the next required fix.
+
+## 2026-05-24 21:58:15 IST - Start v0.2.13 Speaker Calibration Fix
+
+- Action: Planned a v0.2.13 fix that adds per-speaker calibration tones before repeating the simultaneous playback test.
+- Result: The fix will add a tested PCM tone generator, Android routed calibration playback, and visible `Test 1` / `Test 2` controls for the selected Mini Boost speakers.
+
+## 2026-05-24 21:58:49 IST - Add Red Calibration Tone Test
+
+- Action: Added `CalibrationToneTest` and compiled it before implementing the generator.
+- Result: The compile failed as expected with `cannot find symbol CalibrationTone`, proving the new test covers the missing calibration-tone primitive.
+
+## 2026-05-24 22:01:15 IST - Log Plain Java Test Source Omission
+
+- Action: Ran the full plain Java test command after implementing calibration and hit a compile failure in `SystemBarAppearancePolicyTest`.
+- Result: Added `docs/problems/2026-05-24-plain-java-test-source-omission.md`; the first hypothesis is that the local `javac` source list omitted `SystemBarAppearancePolicy.java`.
+
+## 2026-05-24 22:01:52 IST - Run v0.2.13 Plain Java Tests
+
+- Action: Re-ran every plain Java test with `SystemBarAppearancePolicy.java` included in the source list and documented the test harness fix.
+- Result: All plain Java tests exited with code 0; `docs/solutions/plain-java-test-source-omission.md` records the source-list correction.
+
+## 2026-05-24 22:03:21 IST - Build v0.2.13 Debug APK
+
+- Action: Ran the offline Gradle clean debug build after adding calibration tone generation, routed calibration playback, and `Test 1` / `Test 2` UI controls.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 56s and produced `app/build/outputs/apk/debug/app-debug.apk`.
+
+## 2026-05-24 22:03:50 IST - Log AAPT PATH Problem
+
+- Action: Tried to verify APK badging with `aapt dump badging` from the default shell environment and hit `zsh:1: command not found: aapt`.
+- Result: Added `docs/problems/2026-05-24-aapt-not-on-default-path.md`; the next verification will use the explicit Android SDK build-tools path.
+
+## 2026-05-24 22:04:17 IST - Install v0.2.13 Calibration APK
+
+- Action: Verified APK badging with `/home/astra/.android/sdk/build-tools/34.0.0/aapt`, installed the debug APK on `d1bc5c4a`, and documented the AAPT path solution.
+- Result: APK metadata reports `com.xpwnit.dualbt` versionName `0.2.13`, versionCode `14`, min SDK `29`, target SDK `34`; `adb install -r` completed with `Success`.
+
+## 2026-05-24 22:06:20 IST - Select Speakers For Calibration
+
+- Action: Stopped stale player/app state, launched v0.2.13, selected `Mini boost 1`, scrolled, selected `Mini boost 2`, and checked the UI hierarchy.
+- Result: Both Mini Boost rows are selected; `Test 1` and `Test 2` controls are visible. The missing `adb shell media` helper was documented with the `cmd media_session volume` workaround.
+
+## 2026-05-24 22:07:01 IST - Log Calibration AudioTrack Initialization Failure
+
+- Action: Tapped `Test 1` after setting test volumes and pulled the app-private log.
+- Result: The calibration tone did not play; `SpeakerTest` logged `Calibration AudioTrack was not initialized for Mini boost 1`. Added `docs/problems/2026-05-24-calibration-audiotrack-not-initialized.md`.
+
+## 2026-05-24 22:07:48 IST - Implement Streamed Calibration Playback
+
+- Action: Changed `SpeakerCalibrationPlayer` from `AudioTrack.MODE_STATIC` to `AudioTrack.MODE_STREAM`, writes generated PCM in min-buffer-sized chunks, and bumped the app to v0.2.14.
+- Result: The calibration path now avoids the static-buffer initialization failure seen on the physical Redmi Note 9 Pro.
+
+## 2026-05-24 22:09:22 IST - Build v0.2.14 Streamed Calibration APK
+
+- Action: Re-ran all plain Java tests and the offline Gradle clean debug build after switching calibration playback to streamed writes.
+- Result: All plain Java tests exited with code 0; `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 54s.
+
+## 2026-05-24 22:09:48 IST - Install v0.2.14 Calibration APK
+
+- Action: Verified APK badging with the explicit SDK `aapt` path and installed the rebuilt v0.2.14 debug APK on `d1bc5c4a`.
+- Result: APK metadata reports versionName `0.2.14`, versionCode `15`; `adb install -r` completed with `Success`.
+
+## 2026-05-24 22:12:17 IST - Log Repeated Routed-But-Silent Audio Failure
+
+- Action: Tapped `Test 1`, asked for physical feedback, and pulled app/audio diagnostics after the user reported no sound.
+- Result: Added `docs/problems/2026-05-24-calibration-tone-routed-but-silent.md`; because this repeats the no-audible-audio symptom, implementation retries are paused for a 3-5 option research pass.
+
+## 2026-05-24 22:14:36 IST - Log Calibration Button Mis-Tap
+
+- Action: Tried to trigger `Test 2` by coordinates after layout changes, but the tap started streaming instead of playing the calibration tone.
+- Result: Force-stopped DualBT to stop the accidental stream and added `docs/problems/2026-05-24-calibration-test-button-layout-mistap.md`; the next UI fix will move calibration controls into a stable top-level panel.
+
+## 2026-05-24 22:15:38 IST - Start YouTube Volume Control Fix
+
+- Action: Switched the active test source to the local YouTube app and logged the missing DualBT output-volume control reported by the user.
+- Result: Added `docs/problems/2026-05-24-youtube-capture-volume-control-missing.md`; the selected fix is app-level PCM gain scaling with live volume controls sent to the foreground service.
+
+## 2026-05-24 22:17:17 IST - Add Red PCM Gain Test
+
+- Action: Added `PcmGainTest` for unity gain, half gain, and boosted sample clamping before implementing the scaler.
+- Result: The compile failed as expected with `cannot find symbol PcmGain`, proving the missing gain primitive is covered.
+
+## 2026-05-24 22:18:56 IST - Implement DualBT Output Volume Controls
+
+- Action: Added `PcmGain`, applied gain inside the playback capture loop before route writes, added live output-volume service updates, moved `Test 1` / `Test 2` into a stable top panel, and bumped the app to v0.2.15.
+- Result: DualBT can now scale captured YouTube audio internally from 0% to 200% instead of relying only on Android media/call stream volume behavior.
+
+## 2026-05-24 22:19:25 IST - Run v0.2.15 Plain Java Tests
+
+- Action: Compiled and ran every plain Java test, including the new `PcmGainTest`.
+- Result: All plain Java tests exited with code 0.
+
+## 2026-05-24 22:20:35 IST - Build v0.2.15 Debug APK
+
+- Action: Ran the offline Gradle clean debug build after adding DualBT output volume controls and live service gain updates.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 45s.
+
+## 2026-05-24 22:21:01 IST - Install v0.2.15 Volume APK
+
+- Action: Verified APK badging with the explicit SDK `aapt` path and installed the rebuilt debug APK on physical device `d1bc5c4a`.
+- Result: APK metadata reports versionName `0.2.15`, versionCode `16`; `adb install -r` completed with `Success`.
+
+## 2026-05-24 22:23:19 IST - Start YouTube Playback Test
+
+- Action: Launched YouTube with a music URL, checked foreground activity, media sessions, and audio playback configuration.
+- Result: YouTube is foreground and then reached `PlaybackState state=3`; AudioService shows the YouTube source track plus DualBT's two output tracks. Logged the MIUI `cmd media_session dispatch play` error in `docs/problems/2026-05-24-media-session-dispatch-play-error.md`.
+
+## 2026-05-24 22:23:51 IST - Log Shell Volume Intent Block
+
+- Action: Tried to update DualBT output gain with an ADB `am startservice` intent while the foreground service was running.
+- Result: Android rejected the shell caller with `Error: Requires permission not exported from uid 10531`; added `docs/problems/2026-05-24-shell-volume-intent-service-not-exported.md` and kept the service non-exported.
+
+## 2026-05-24 22:25:03 IST - Add Notification Volume Actions
+
+- Action: Added `Vol -` and `Vol +` actions to the DualBT foreground-service notification, wired them to internal gain adjustment, and bumped the app to v0.2.16.
+- Result: DualBT output gain can now be adjusted while YouTube stays in the foreground, without exporting the service to shell or other apps.
+
+## 2026-05-24 22:26:54 IST - Build v0.2.16 Notification Volume APK
+
+- Action: Re-ran all plain Java tests and the offline Gradle clean debug build after adding foreground notification volume actions.
+- Result: All plain Java tests exited with code 0; `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 1m 6s.
+
+## 2026-05-24 22:27:21 IST - Install v0.2.16 Notification Volume APK
+
+- Action: Verified APK badging with the explicit SDK `aapt` path and installed the rebuilt v0.2.16 debug APK on `d1bc5c4a`.
+- Result: APK metadata reports versionName `0.2.16`, versionCode `17`; `adb install -r` completed with `Success`.
+
+## 2026-05-24 22:30:09 IST - Log Volume Controls Activity Recreate Bug
+
+- Action: Reopened DualBT after starting YouTube and notification testing, then inspected the UI hierarchy.
+- Result: The foreground service was active, but `MainActivity` had reset local streaming/selection state and would not send volume updates; added `docs/problems/2026-05-24-volume-controls-lost-after-activity-recreate.md`.
+
+## 2026-05-24 22:30:57 IST - Fix Volume Controls After Activity Recreate
+
+- Action: Changed `MainActivity` to always forward output-volume changes to `DualBTService`, made the service stop cleanly if a volume-only action arrives without an active stream, and bumped the app to v0.2.17.
+- Result: Reopened UI volume controls can now update an already-running stream even when activity-local selection state was recreated.
+
+## 2026-05-24 22:32:50 IST - Build v0.2.17 Recreated-Activity Volume APK
+
+- Action: Re-ran all plain Java tests and the offline Gradle clean debug build after fixing activity-recreated volume updates.
+- Result: All plain Java tests exited with code 0; `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 58s.
+
+## 2026-05-24 22:33:21 IST - Install v0.2.17 Recreated-Activity Volume APK
+
+- Action: Verified APK badging and installed the rebuilt v0.2.17 debug APK on physical device `d1bc5c4a`.
+- Result: APK metadata reports versionName `0.2.17`, versionCode `18`; `adb install -r` completed with `Success`.
+
+## 2026-05-24 22:35:22 IST - Verify Running YouTube Capture Volume Build
+
+- Action: Checked connected device `d1bc5c4a`, installed package metadata, git state, and DualBT file logs before the YouTube volume-control test.
+- Result: Physical device is connected, installed DualBT is versionName `0.2.17` versionCode `18`, and service logs show active playback capture with two output tracks for `Mini boost 1` and `Mini boost 2`.
+
+## 2026-05-24 22:36:17 IST - Start YouTube Music Source
+
+- Action: Opened YouTube with a music URL on physical device `d1bc5c4a`, sent a media play key event, and inspected `dumpsys media_session`.
+- Result: YouTube is the active media-button session with `PlaybackState` state `3` and current metadata `Chand Mera Dil - Title Track`; DualBT capture logs remained active.
+
+## 2026-05-24 22:36:40 IST - Log UIAutomator MIUI Warning
+
+- Action: Brought DualBT to the foreground and ran `uiautomator dump` to locate the top-level volume controls.
+- Result: MIUI printed a missing `theme_compatibility.xml` stack trace while still writing `/sdcard/dualbt-ui.xml`; added `docs/problems/2026-05-24-uiautomator-miui-theme-config-missing.md`.
+
+## 2026-05-24 22:38:07 IST - Diagnose YouTube Volume Workflow Gap
+
+- Action: Tapped DualBT `Volume -` six times, inspected service logs, checked YouTube media-session state, and reviewed the service/capture/output routing code.
+- Result: DualBT gain changed from 100% to 40% in the running service, but YouTube reported `PlaybackState` state `1` after app switching; updated `docs/problems/2026-05-24-youtube-capture-volume-control-missing.md` with the new evidence.
+
+## 2026-05-24 22:39:15 IST - Add Failing System Volume Mapping Test
+
+- Action: Added `OutputVolumeMapperTest` for converting Android media stream volume into DualBT output gain and ran it before production code.
+- Result: The test failed as expected because `OutputVolumeMapper` does not exist yet; this confirms the new test covers missing behavior.
+
+## 2026-05-24 22:40:38 IST - Implement System Media Volume Sync
+
+- Action: Added `OutputVolumeMapper`, added `SystemMediaVolumeObserver`, wired `DualBTService` to follow Android media-volume changes, bumped the app to v0.2.18, and ran `OutputVolumeMapperTest`.
+- Result: The new mapper test exited with code 0, proving the media-volume-to-DualBT-gain mapping works in plain Java.
+
+## 2026-05-24 22:41:03 IST - Run Full Plain Java Tests For v0.2.18
+
+- Action: Compiled and ran every `app/src/test/java/**/*Test.java` main against the current source tree after adding system media-volume sync.
+- Result: All plain Java tests exited with code 0.
+
+## 2026-05-24 22:42:25 IST - Build v0.2.18 System Volume Sync APK
+
+- Action: Ran the offline clean debug Gradle build after adding the system media-volume observer.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 1m.
+
+## 2026-05-24 22:42:51 IST - Install v0.2.18 System Volume Sync APK
+
+- Action: Verified APK badging with the explicit SDK `aapt` path, installed the debug APK on physical device `d1bc5c4a`, and checked installed package metadata.
+- Result: APK metadata reports versionName `0.2.18`, versionCode `19`; `adb install -r` completed with `Success` and the device package now reports versionName `0.2.18`.
+
+## 2026-05-24 22:45:41 IST - Verify Hardware Volume Drives DualBT Gain
+
+- Action: Started a fresh DualBT stream to `Mini boost 1` and `Mini boost 2`, accepted MediaProjection, then sent five hardware volume-up key events through ADB.
+- Result: Service logs show system media-volume sync changing DualBT gain from `0%` to `33%`; `cmd media_session volume --get` reports media volume `5` in range `0..15`.
+
+## 2026-05-24 22:46:34 IST - Verify YouTube Foreground Source With DualBT Active
+
+- Action: Opened YouTube while the DualBT service was streaming, sent media play, then checked `dumpsys media_session` and DualBT logs.
+- Result: YouTube is active with `PlaybackState` state `3`, DualBT remains in the audio playback list, and capture logs continue writing PCM to both selected routes.
+
+## 2026-05-24 22:47:09 IST - Lower YouTube Foreground Hardware Volume
+
+- Action: With YouTube still foreground and playing, sent three hardware volume-down key events and inspected DualBT logs plus media-session state.
+- Result: Android media volume changed to `2/15`, DualBT system media-volume sync lowered capture output gain from `33%` to `13%`, and YouTube remained active with `PlaybackState` state `3`.
+
+## 2026-05-24 22:48:32 IST - Raise YouTube Foreground Hardware Volume
+
+- Action: With YouTube still foreground and playing, sent five hardware volume-up key events and inspected DualBT logs plus media-session state.
+- Result: Android media volume changed to `7/15`, DualBT system media-volume sync raised capture output gain from `13%` to `47%`, and YouTube remained active with `PlaybackState` state `3`.
+
+## 2026-05-24 22:50:44 IST - Document Volume Fix Outcomes
+
+- Action: Recorded the user-confirmed physical speaker results and created solution docs for YouTube capture volume control, recreated-activity volume controls, shell service export safety, and the MIUI UIAutomator warning.
+- Result: User confirmed the speakers got quieter after lowering hardware volume and louder after raising it; solution docs now link back to the matching problem files.

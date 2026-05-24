@@ -30,6 +30,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import com.xpwnit.dualbt.audio.SpeakerCalibrationPlayer;
 import com.xpwnit.dualbt.bt.AndroidBluetoothScanner;
 import com.xpwnit.dualbt.logging.AppLogger;
 import com.xpwnit.dualbt.logging.LogStore;
@@ -49,17 +50,22 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
     private final StreamSessionController streamSession = new StreamSessionController(REQUIRED_SPEAKERS);
     private final AndroidBluetoothScanner bluetoothScanner = new AndroidBluetoothScanner();
 
+    private SpeakerCalibrationPlayer calibrationPlayer;
     private FrameLayout root;
     private LinearLayout deviceList;
     private TextView statusText;
     private TextView countBadge;
     private TextView streamButton;
     private TextView modeBadge;
+    private TextView volumeBadge;
+    private TextView testOneButton;
+    private TextView testTwoButton;
     private OrbBackgroundView backgroundView;
     private FrameLayout logOverlay;
     private LinearLayout logList;
     private String logFilter = "ALL";
     private MediaProjectionManager projectionManager;
+    private int outputVolumePercent = 100;
     private boolean emulatorMode = true;
     private boolean dark;
 
@@ -69,6 +75,7 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
         dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                 == Configuration.UI_MODE_NIGHT_YES;
         projectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+        calibrationPlayer = new SpeakerCalibrationPlayer(this);
         configureWindow();
         AppLogger.i("MainActivity", "Activity created");
         AppLogger.i("MainViewModel", "ViewModel initialized");
@@ -91,6 +98,14 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
         AppLogger.removeListener(this);
         AppLogger.i("MainActivity", "Activity paused");
         super.onPause();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (calibrationPlayer != null) {
+            calibrationPlayer.stop();
+        }
+        super.onDestroy();
     }
 
     @Override
@@ -173,6 +188,10 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
         content.addView(space(16));
         content.addView(statusCard());
         content.addView(space(16));
+        content.addView(outputControlsCard());
+        content.addView(space(16));
+        content.addView(calibrationCard());
+        content.addView(space(16));
 
         TextView section = label("Available Devices", 14, muted(), Typeface.BOLD);
         content.addView(section);
@@ -241,6 +260,42 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
         return card;
     }
 
+    private View outputControlsCard() {
+        LinearLayout card = glassCard();
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView down = iconButton("Volume -");
+        down.setOnClickListener(v -> adjustOutputVolume(-10));
+        card.addView(down);
+        card.addView(spaceHorizontal(10));
+
+        volumeBadge = pill("100%", accent2(), tint(accent2(), 0.14f));
+        card.addView(volumeBadge, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        card.addView(spaceHorizontal(10));
+
+        TextView up = iconButton("Volume +");
+        up.setOnClickListener(v -> adjustOutputVolume(10));
+        card.addView(up);
+        return card;
+    }
+
+    private View calibrationCard() {
+        LinearLayout card = glassCard();
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+
+        testOneButton = iconButton("Test 1");
+        testOneButton.setOnClickListener(v -> playSelectedCalibrationTone(1));
+        card.addView(testOneButton, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        card.addView(spaceHorizontal(10));
+
+        testTwoButton = iconButton("Test 2");
+        testTwoButton.setOnClickListener(v -> playSelectedCalibrationTone(2));
+        card.addView(testTwoButton, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        return card;
+    }
+
     private void render() {
         deviceList.removeAllViews();
         for (StreamDevice device : devices) {
@@ -260,9 +315,30 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
         streamButton.setBackground(streaming ? rounded(error(), errorDark()) : waiting ? rounded(warning(), warning()) : gradient(accent(), accent2(), dp(8)));
         streamButton.setEnabled(canStart || streaming);
         streamButton.setAlpha((canStart || streaming) ? 1f : 0.55f);
+        if (volumeBadge != null) {
+            volumeBadge.setText(outputVolumePercent + "%");
+        }
+        updateCalibrationButton(testOneButton, 1);
+        updateCalibrationButton(testTwoButton, 2);
         backgroundView.setStreaming(streaming);
         modeBadge.setText(emulatorMode ? "Emulator Mode" : "Bluetooth Ready");
         modeBadge.setVisibility(View.VISIBLE);
+    }
+
+    private void updateCalibrationButton(TextView button, int selectedNumber) {
+        if (button == null) {
+            return;
+        }
+        StreamDevice device = selectedForNumber(selectedNumber);
+        if (device == null) {
+            button.setText("Test " + selectedNumber);
+            button.setEnabled(false);
+            button.setAlpha(0.55f);
+            return;
+        }
+        button.setText("Test " + selectedNumber);
+        button.setEnabled(!streamSession.isAwaitingCapturePermission());
+        button.setAlpha(streamSession.isAwaitingCapturePermission() ? 0.55f : 1f);
     }
 
     private View deviceCard(StreamDevice device) {
@@ -308,6 +384,16 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
         return card;
     }
 
+    private int selectedNumber(StreamDevice device) {
+        List<StreamDevice> selected = streamSession.selectedDevices();
+        for (int index = 0; index < selected.size(); index++) {
+            if (selected.get(index).equals(device)) {
+                return index + 1;
+            }
+        }
+        return 0;
+    }
+
     private void toggle(StreamDevice device) {
         boolean wasSelected = streamSession.isSelected(device);
         boolean changed = streamSession.toggle(device);
@@ -323,6 +409,55 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
             AppLogger.w("MainViewModel", "Selection limit reached: exactly 2 speakers supported");
         }
         render();
+    }
+
+    private void playCalibrationTone(StreamDevice device, int selectedNumber) {
+        if (streamSession.isStreaming()) {
+            stopStreaming();
+        }
+        AppLogger.i("MainViewModel", "Calibration test requested for " + device.name + " as speaker " + selectedNumber);
+        calibrationPlayer.play(device, selectedNumber);
+        render();
+    }
+
+    private void playSelectedCalibrationTone(int selectedNumber) {
+        StreamDevice device = selectedForNumber(selectedNumber);
+        if (device == null) {
+            AppLogger.w("MainViewModel", "Calibration test " + selectedNumber + " blocked: speaker is not selected");
+            return;
+        }
+        playCalibrationTone(device, selectedNumber);
+    }
+
+    private StreamDevice selectedForNumber(int selectedNumber) {
+        List<StreamDevice> selected = streamSession.selectedDevices();
+        int index = selectedNumber - 1;
+        if (index < 0 || index >= selected.size()) {
+            return null;
+        }
+        return selected.get(index);
+    }
+
+    private void adjustOutputVolume(int deltaPercent) {
+        int next = Math.max(0, Math.min(200, outputVolumePercent + deltaPercent));
+        if (next == outputVolumePercent) {
+            return;
+        }
+        outputVolumePercent = next;
+        AppLogger.i("MainViewModel", "Output volume changed to " + outputVolumePercent + "%");
+        sendOutputVolumeToService();
+        render();
+    }
+
+    private void sendOutputVolumeToService() {
+        Intent intent = new Intent(this, DualBTService.class);
+        intent.setAction(DualBTService.ACTION_SET_OUTPUT_VOLUME);
+        intent.putExtra(DualBTService.EXTRA_OUTPUT_VOLUME_PERCENT, outputVolumePercent);
+        try {
+            startService(intent);
+        } catch (RuntimeException exception) {
+            AppLogger.e("MainActivity", "Unable to update output volume", exception);
+        }
     }
 
     private void refreshDevices() {
@@ -395,6 +530,7 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
         serviceIntent.putExtra(DualBTService.EXTRA_RESULT_CODE, resultCode);
         serviceIntent.putExtra(DualBTService.EXTRA_RESULT_DATA, data);
         serviceIntent.putExtra(DualBTService.EXTRA_ROUTE_PLAN, routePlan.toPayload());
+        serviceIntent.putExtra(DualBTService.EXTRA_OUTPUT_VOLUME_PERCENT, outputVolumePercent);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent);
         } else {

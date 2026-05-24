@@ -2,6 +2,51 @@
 
 All notable changes to DualBT will be documented in this file.
 
+## [0.2.18] - 2026-05-24
+
+### Added
+- Added system media-volume syncing in the foreground service so hardware volume keys can control DualBT output gain while YouTube remains the foreground source app.
+- Added a plain Java `OutputVolumeMapperTest` for Android media-volume to DualBT gain mapping.
+
+## [0.2.17] - 2026-05-24
+
+### Fixed
+- Fixed volume controls after activity recreation by always forwarding foreground UI volume changes to the running service and making volume-only service starts stop cleanly when no stream is active.
+
+## [0.2.16] - 2026-05-24
+
+### Added
+- Added foreground-service notification `Vol -` and `Vol +` actions so DualBT output gain can be adjusted while YouTube remains the foreground source app.
+
+## [0.2.15] - 2026-05-24
+
+### Added
+- Added visible DualBT output volume controls that scale captured PCM before writing to the selected speaker routes.
+- Added a tested PCM gain scaler with 0-200% gain and signed 16-bit clipping.
+- Moved `Test 1` and `Test 2` controls into a stable top-level calibration panel for safer physical-device testing.
+
+## [0.2.14] - 2026-05-24
+
+### Fixed
+- Switched speaker calibration playback from static-buffer `AudioTrack` output to streamed min-buffer playback after physical testing showed the static calibration track failed to initialize on the Redmi Note 9 Pro.
+
+## [0.2.13] - 2026-05-24
+
+### Added
+- Added per-speaker `Test 1` and `Test 2` calibration controls for selected devices so identical Mini Boost speakers can be identified before dual playback testing.
+- Added a routed Android calibration tone player that uses the same A2DP and communication-SCO fallback strategy as the streaming output path.
+- Added a plain Java calibration tone generator test.
+
+## [0.2.12] - 2026-05-24
+
+### Added
+- Added duplicate Bluetooth speaker aliases so the two physical `Mini boost 4` speakers display as `Mini boost 1` and `Mini boost 2` while preserving their original addresses.
+- Added an experimental A2DP plus communication-SCO fallback for devices that expose one Bluetooth media sink but a separate Bluetooth communication route.
+- Added tests for duplicate Mini Boost aliases and output fallback planning.
+
+### Changed
+- Ignored the local `music.webm` test asset so user-provided media is not staged by `git add -A`.
+
 ## [0.2.11] - 2026-05-24
 
 ### Added

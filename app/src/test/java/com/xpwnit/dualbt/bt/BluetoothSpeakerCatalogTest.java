@@ -25,6 +25,15 @@ public final class BluetoothSpeakerCatalogTest {
         assertEquals("Bluetooth Speaker", devices.get(1).name, "missing names are sanitized");
         assertEquals("Bonded Bluetooth audio", devices.get(1).subtitle, "missing subtitles are sanitized");
 
+        List<StreamDevice> duplicateMiniBoost = catalog.toStreamDevices(Arrays.asList(
+                new BluetoothSpeakerCatalog.Candidate("Mini boost 4", "41:42:26:B3:62:1C", "Bonded Bluetooth headset", true),
+                new BluetoothSpeakerCatalog.Candidate("Mini boost 4", "41:42:2E:9E:5E:AE", "Bonded Bluetooth headset", true)
+        ), false);
+        assertEquals("Mini boost 1", duplicateMiniBoost.get(0).name, "first duplicate Mini boost alias");
+        assertEquals("Mini boost 2", duplicateMiniBoost.get(1).name, "second duplicate Mini boost alias");
+        assertEquals("Bonded Bluetooth headset · Mini boost 4", duplicateMiniBoost.get(0).subtitle, "first duplicate original name is retained");
+        assertEquals("Bonded Bluetooth headset · Mini boost 4", duplicateMiniBoost.get(1).subtitle, "second duplicate original name is retained");
+
         List<StreamDevice> mockFallback = catalog.toStreamDevices(Collections.emptyList(), true);
         assertEquals(2, mockFallback.size(), "mock fallback returns two speakers");
         assertEquals("Mock Speaker 1", mockFallback.get(0).name, "first mock name");
