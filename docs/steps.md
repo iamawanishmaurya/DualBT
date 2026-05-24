@@ -1333,3 +1333,8 @@
 
 - Action: Updated the one-speaker and calibration solution docs to reference the corrected generated-source-list test command and the final v0.2.21 activity-side route block.
 - Result: Solution documentation now matches the verified final implementation and commands.
+
+## 2026-05-24 23:44:08 IST - Commit v0.2.21 Route Blocking Fix
+
+- Action: Ran `git add -A`, confirmed staged status, and committed the direct-route validation, calibration gate, activity-side unsupported-route UI guard, v0.2.21 metadata, tests, and documentation.
+- Result: Created commit `c89ea1b` with message `fix: fail closed on unsupported dual bluetooth routes`.
