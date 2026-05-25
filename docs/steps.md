@@ -1987,3 +1987,6 @@
 2026-05-25 10:50:15 IST - Commit v0.2.37 System Route Group Probe
 - Action: Ran `git add -A`, confirmed the staged status, and committed the v0.2.37 system route-group probe implementation and documentation.
 - Result: Created commit `45e8a04` with message `feat: add system route group dual audio probe`.
+2026-05-25 10:50:57 IST - Push v0.2.37 To GitHub
+- Action: Tagged `v0.2.37` and ran `./scripts/push-github.sh`.
+- Result: GitHub accepted branch update `1ff8c48..38f6208` for `implementation/dualbt-v0.1.0` and created tag `v0.2.37`.
