@@ -31,6 +31,7 @@ public final class DualBTService extends Service {
     private static final int REQUIRED_ROUTE_TARGETS = 2;
     private AndroidPlaybackCaptureEngine captureEngine;
     private SystemMediaVolumeObserver systemVolumeObserver;
+    private Thread captureStartThread;
     private int currentOutputVolumePercent = 100;
 
     @Override
@@ -72,14 +73,38 @@ public final class DualBTService extends Service {
         applyOutputVolume(intent.getIntExtra(EXTRA_OUTPUT_VOLUME_PERCENT, 100));
         startSystemVolumeSync();
         MediaProjection projection = mediaProjectionFrom(intent);
-        if (projection == null || !captureEngine.start(projection, routePlan)) {
+        if (projection == null) {
             AppLogger.w("DualBTService", "Foreground service stopping because audio capture could not start");
             stopSystemVolumeSync();
             stopSelf(startId);
             return START_NOT_STICKY;
         }
-        AppLogger.i("DualBTService", "Foreground service started with capture routes: " + routePlan.displayNames());
+        startCaptureAsync(projection, routePlan, startId);
         return START_STICKY;
+    }
+
+    private synchronized void startCaptureAsync(MediaProjection projection, StreamRoutePlan routePlan, int startId) {
+        Thread existing = captureStartThread;
+        if (existing != null && existing.isAlive()) {
+            existing.interrupt();
+        }
+        Thread starter = new Thread(() -> {
+            boolean started = captureEngine != null && captureEngine.start(projection, routePlan);
+            synchronized (DualBTService.this) {
+                if (Thread.currentThread() == captureStartThread) {
+                    captureStartThread = null;
+                }
+            }
+            if (!started) {
+                AppLogger.w("DualBTService", "Foreground service stopping because audio capture could not start");
+                stopSystemVolumeSync();
+                stopSelf(startId);
+                return;
+            }
+            AppLogger.i("DualBTService", "Foreground service started with capture routes: " + routePlan.displayNames());
+        }, "DualBT-CaptureStart");
+        captureStartThread = starter;
+        starter.start();
     }
 
     private void applyOutputVolume(int percent) {
@@ -125,6 +150,11 @@ public final class DualBTService extends Service {
 
     @Override
     public void onDestroy() {
+        Thread starter = captureStartThread;
+        captureStartThread = null;
+        if (starter != null) {
+            starter.interrupt();
+        }
         stopSystemVolumeSync();
         if (captureEngine != null) {
             captureEngine.stop();

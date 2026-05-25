@@ -37,6 +37,26 @@ public final class StreamSessionController {
         return true;
     }
 
+    public boolean restoreSelected(List<StreamDevice> devices) {
+        if (streaming || awaitingCapturePermission) {
+            return false;
+        }
+        selected.clear();
+        if (devices == null) {
+            return true;
+        }
+        for (StreamDevice device : devices) {
+            if (device == null || device.address == null || device.address.trim().isEmpty()) {
+                continue;
+            }
+            if (selected.size() >= requiredDevices) {
+                break;
+            }
+            selected.putIfAbsent(device.address, device);
+        }
+        return true;
+    }
+
     public StartResult start() {
         if (streaming) {
             return StartResult.ALREADY_STREAMING;

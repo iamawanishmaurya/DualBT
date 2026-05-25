@@ -1,7 +1,58 @@
 package com.xpwnit.dualbt.state;
 
+import java.util.Arrays;
+import java.util.List;
+
 public final class StreamSessionControllerTest {
     public static void main(String[] args) {
+        restoresSelectedDevicesAfterActivityRecreation();
+        keepsRestoreWithinRequiredDeviceLimit();
+        locksRestoreWhileStreaming();
+        exercisesStreamingStateMachine();
+    }
+
+    private static void restoresSelectedDevicesAfterActivityRecreation() {
+        StreamDevice one = new StreamDevice("Speaker One", "Route", "01");
+        StreamDevice two = new StreamDevice("Speaker Two", "Route", "02");
+        StreamSessionController controller = new StreamSessionController(2);
+
+        controller.restoreSelected(Arrays.asList(one, two));
+
+        assertEquals(2, controller.selectedCount(), "restored selected count");
+        assertEquals("Ready to stream", controller.statusMessage(), "restored status");
+        List<StreamDevice> selected = controller.selectedDevices();
+        assertEquals(one, selected.get(0), "first restored speaker keeps order");
+        assertEquals(two, selected.get(1), "second restored speaker keeps order");
+    }
+
+    private static void keepsRestoreWithinRequiredDeviceLimit() {
+        StreamDevice one = new StreamDevice("Speaker One", "Route", "01");
+        StreamDevice two = new StreamDevice("Speaker Two", "Route", "02");
+        StreamDevice three = new StreamDevice("Speaker Three", "Route", "03");
+        StreamSessionController controller = new StreamSessionController(2);
+
+        controller.restoreSelected(Arrays.asList(one, two, three, one));
+
+        assertEquals(2, controller.selectedCount(), "restore caps selected speakers at required count");
+        List<StreamDevice> selected = controller.selectedDevices();
+        assertEquals(one, selected.get(0), "restore keeps first selected speaker");
+        assertEquals(two, selected.get(1), "restore keeps second selected speaker");
+    }
+
+    private static void locksRestoreWhileStreaming() {
+        StreamDevice one = new StreamDevice("Speaker One", "Route", "01");
+        StreamDevice two = new StreamDevice("Speaker Two", "Route", "02");
+        StreamDevice replacement = new StreamDevice("Replacement", "Route", "04");
+        StreamSessionController controller = new StreamSessionController(2);
+
+        controller.restoreSelected(Arrays.asList(one, two));
+        assertEquals(StreamSessionController.StartResult.CAPTURE_PERMISSION_REQUIRED, controller.start(), "stream setup");
+        assertTrue(controller.confirmCapturePermission(), "stream starts");
+        assertFalse(controller.restoreSelected(Arrays.asList(replacement)), "restore is blocked during streaming");
+        assertEquals(one, controller.selectedDevices().get(0), "streaming keeps original first speaker");
+    }
+
+    private static void exercisesStreamingStateMachine() {
         StreamDevice one = new StreamDevice("Speaker One", "Route", "01");
         StreamDevice two = new StreamDevice("Speaker Two", "Route", "02");
         StreamDevice three = new StreamDevice("Speaker Three", "Route", "03");

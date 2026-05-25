@@ -8,6 +8,7 @@ public final class AudioOutputModePlannerTest {
         avoidsCommunicationFallbackForOneA2dpAndOneUnmatchedRoute();
         keepsPureMediaModeWhenBothA2dpRoutesAreAvailable();
         avoidsFallbackWhenScoRouteIsUnavailable();
+        usesActiveA2dpHandoffForOneDirectClassicRoute();
     }
 
     private static void avoidsCommunicationFallbackForOneA2dpAndOneUnmatchedRoute() {
@@ -47,6 +48,19 @@ public final class AudioOutputModePlannerTest {
 
         assertFalse(plan.useCommunicationFallback, "fallback needs an available SCO output route");
         assertEquals(-1, plan.communicationRouteIndex, "no communication route without SCO");
+    }
+
+    private static void usesActiveA2dpHandoffForOneDirectClassicRoute() {
+        List<Integer> matches = Arrays.asList(0, -1);
+        List<AudioOutputRouteMatcher.OutputDeviceDescriptor> outputs = Arrays.asList(
+                new AudioOutputRouteMatcher.OutputDeviceDescriptor("Mini boost 1", "41:42:26:B3:62:1C", 8)
+        );
+
+        AudioOutputModePlanner.Plan plan = AudioOutputModePlanner.plan(matches, outputs);
+
+        assertTrue(plan.useActiveA2dpHandoff, "one classic A2DP route should use active-device handoff experiment");
+        assertFalse(plan.useCommunicationFallback, "active A2DP handoff must not use generic SCO fallback");
+        assertEquals(-1, plan.communicationRouteIndex, "active A2DP handoff has no communication route");
     }
 
     private static void assertTrue(boolean value, String message) {

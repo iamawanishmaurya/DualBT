@@ -3,10 +3,12 @@ package com.xpwnit.dualbt.audio;
 import android.content.Context;
 import android.media.AudioAttributes;
 import android.media.AudioDeviceInfo;
+import android.media.AudioFocusRequest;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioTrack;
 import android.os.Build;
+import android.os.SystemClock;
 
 import com.xpwnit.dualbt.logging.AppLogger;
 import com.xpwnit.dualbt.state.StreamDevice;
@@ -18,17 +20,25 @@ import java.util.Locale;
 
 public final class SpeakerCalibrationPlayer {
     private static final int SAMPLE_RATE = 48_000;
+    private static final int SCO_SAMPLE_RATE = 16_000;
     private static final int DURATION_MS = 3_200;
+    private static final long PLAYBACK_DRAIN_POLL_MS = 50L;
 
     private final Context context;
     private final SpeakerTestRunGate runGate = new SpeakerTestRunGate();
+    private final BluetoothA2dpRouteActivator routeActivator;
+    private final BluetoothHeadsetRouteActivator headsetRouteActivator;
     private AudioTrack currentTrack;
     private AudioManager activeAudioManager;
     private boolean communicationFallbackActive;
+    private AudioFocusRequest activeFocusRequest;
+    private boolean legacyFocusActive;
     private int previousAudioMode = AudioManager.MODE_NORMAL;
 
     public SpeakerCalibrationPlayer(Context context) {
         this.context = context.getApplicationContext();
+        this.routeActivator = new BluetoothA2dpRouteActivator(this.context);
+        this.headsetRouteActivator = new BluetoothHeadsetRouteActivator(this.context);
     }
 
     public synchronized void play(StreamDevice device, int speakerNumber) {
@@ -61,26 +71,66 @@ public final class SpeakerCalibrationPlayer {
                 AppLogger.w("SpeakerTest", "AudioManager unavailable for " + routeName(device, speakerNumber));
                 return;
             }
+            BluetoothA2dpRouteActivator.Result activation = routeActivator.activate(device, 900L);
+            if (activation.attempted) {
+                AppLogger.i("SpeakerTest", "A2DP route activation for " + routeName(device, speakerNumber) + ": " + activation.message);
+            } else {
+                AppLogger.d("SpeakerTest", "A2DP route activation skipped for " + routeName(device, speakerNumber) + ": " + activation.message);
+            }
             List<OutputBinding> outputs = bluetoothOutputs(audioManager);
             OutputBinding output = matchingOutput(device, outputs);
-            if (output == null) {
+            if (RouteRetryPolicy.shouldRescanAfterActivation(activation.attempted, output != null)) {
+                output = waitForMatchingOutput(audioManager, device, 6, 220L);
+            }
+            boolean genericScoVisible = firstBluetoothScoOutput(audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) != null;
+            SpeakerCalibrationRoutePlanner.Plan routePlan = SpeakerCalibrationRoutePlanner.plan(
+                    output != null,
+                    activation.attempted,
+                    activation.accepted,
+                    false,
+                    genericScoVisible
+            );
+            boolean communicationTrack = false;
+            if (!routePlan.useDirectMedia && !routePlan.useDefaultMedia && genericScoVisible) {
+                AudioDeviceInfo communicationOutput = startCommunicationFallback(audioManager, device);
+                if (communicationOutput != null) {
+                    output = new OutputBinding(communicationOutput);
+                    communicationTrack = true;
+                    routePlan = SpeakerCalibrationRoutePlanner.plan(false, false, false, true, true);
+                    AppLogger.w(
+                            "SpeakerTest",
+                            "Test " + speakerNumber + " using targeted Headset/SCO route for "
+                                    + routeName(device, speakerNumber)
+                    );
+                } else {
+                    routePlan = SpeakerCalibrationRoutePlanner.plan(false, false, false, false, true);
+                }
+            }
+            if ((output == null && !routePlan.useDefaultMedia) || routePlan.blocked) {
                 AppLogger.w(
                         "SpeakerTest",
                         "Test " + speakerNumber + " blocked for " + routeName(device, speakerNumber)
-                                + ": Android exposes no direct media route for this speaker. Generic SCO fallback is disabled."
+                                + ": Android exposes no direct or targeted communication route for this speaker."
                 );
                 return;
             }
-            boolean communicationTrack = false;
             byte[] pcm = CalibrationTone.stereoSinePcm(
                     SAMPLE_RATE,
                     DURATION_MS,
                     speakerNumber == 2 ? 880.0 : 660.0,
-                    0.72
+                    CalibrationAudioFocusPolicy.testToneGain()
             );
+            if (communicationTrack) {
+                Pcm16ScoConverter converter = new Pcm16ScoConverter(SAMPLE_RATE, SCO_SAMPLE_RATE);
+                byte[] scoPcm = new byte[converter.outputCapacityBytes(pcm.length)];
+                int scoBytes = converter.convert(pcm, pcm.length, scoPcm);
+                byte[] trimmed = new byte[scoBytes];
+                System.arraycopy(scoPcm, 0, trimmed, 0, scoBytes);
+                pcm = trimmed;
+            }
             int minBufferBytes = AudioTrack.getMinBufferSize(
-                    SAMPLE_RATE,
-                    AudioFormat.CHANNEL_OUT_STEREO,
+                    communicationTrack ? SCO_SAMPLE_RATE : SAMPLE_RATE,
+                    communicationTrack ? AudioFormat.CHANNEL_OUT_MONO : AudioFormat.CHANNEL_OUT_STEREO,
                     AudioFormat.ENCODING_PCM_16BIT
             );
             if (minBufferBytes <= 0) {
@@ -93,23 +143,36 @@ public final class SpeakerCalibrationPlayer {
                 AppLogger.w("SpeakerTest", "Calibration AudioTrack was not initialized for " + routeName(device, speakerNumber));
                 return;
             }
+            AudioAttributes focusAttributes = calibrationAudioAttributes(communicationTrack);
+            boolean focusGranted = requestCalibrationFocus(audioManager, focusAttributes, communicationTrack);
             boolean preferred = output != null && track.setPreferredDevice(output.device);
+            ensureCalibrationVolume(audioManager, communicationTrack);
             track.setVolume(1.0f);
             synchronized (this) {
                 currentTrack = track;
             }
             track.play();
             int written = writePcm(track, pcm, bufferBytes);
+            int bytesPerFrame = communicationTrack ? 2 : 4;
+            int targetFrames = CalibrationPlaybackWaitPolicy.framesFromBytes(written, bytesPerFrame);
+            long drainTimeoutMs = CalibrationPlaybackWaitPolicy.timeoutMs(
+                    targetFrames,
+                    communicationTrack ? SCO_SAMPLE_RATE : SAMPLE_RATE
+            );
             AppLogger.i(
                     "SpeakerTest",
                     "Test " + speakerNumber + " started for " + routeName(device, speakerNumber)
                             + ", mode=" + (communicationTrack ? "communication-sco" : "media")
+                            + (routePlan.useDefaultMedia ? "-default-after-a2dp-activation" : "")
                             + ", preferred=" + describe(output == null ? null : output.device)
                             + ", preferredAccepted=" + preferred
                             + ", routed=" + describe(track.getRoutedDevice())
+                            + ", focusGranted=" + focusGranted
                             + ", bytes=" + written
+                            + ", targetFrames=" + targetFrames
+                            + ", drainTimeoutMs=" + drainTimeoutMs
             );
-            Thread.sleep(300L);
+            waitForPlaybackDrain(track, targetFrames, drainTimeoutMs);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             AppLogger.w("SpeakerTest", "Calibration interrupted for " + routeName(device, speakerNumber));
@@ -122,29 +185,165 @@ public final class SpeakerCalibrationPlayer {
                 }
             }
             releaseTrack(track);
+            abandonCalibrationFocus();
             stopCommunicationFallback();
             AppLogger.i("SpeakerTest", "Test " + speakerNumber + " finished for " + routeName(device, speakerNumber));
         }
     }
 
-    private AudioTrack buildTrack(int bufferBytes, boolean communicationTrack) {
-        AudioAttributes.Builder attributes = new AudioAttributes.Builder()
-                .setUsage(communicationTrack ? AudioAttributes.USAGE_VOICE_COMMUNICATION : AudioAttributes.USAGE_MEDIA)
-                .setContentType(communicationTrack ? AudioAttributes.CONTENT_TYPE_SPEECH : AudioAttributes.CONTENT_TYPE_MUSIC);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            attributes.setAllowedCapturePolicy(AudioAttributes.ALLOW_CAPTURE_BY_NONE);
+    private OutputBinding waitForMatchingOutput(
+            AudioManager audioManager,
+            StreamDevice device,
+            int attempts,
+            long delayMs
+    ) throws InterruptedException {
+        for (int attempt = 1; attempt <= attempts; attempt++) {
+            Thread.sleep(delayMs);
+            List<OutputBinding> refreshedOutputs = bluetoothOutputs(audioManager);
+            OutputBinding refreshed = matchingOutput(device, refreshedOutputs);
+            if (refreshed != null) {
+                AppLogger.i(
+                        "SpeakerTest",
+                        "Matched A2DP route for " + routeName(device, 0)
+                                + " after delayed rescan attempt " + attempt + "/" + attempts
+                );
+                return refreshed;
+            }
         }
+        AppLogger.w(
+                "SpeakerTest",
+                "No matching A2DP route for " + routeName(device, 0)
+                        + " after delayed route rescans"
+        );
+        return null;
+    }
+
+    private AudioTrack buildTrack(int bufferBytes, boolean communicationTrack) {
+        AudioAttributes attributes = calibrationAudioAttributes(communicationTrack);
         AudioFormat format = new AudioFormat.Builder()
                 .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                .setSampleRate(SAMPLE_RATE)
-                .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
+                .setSampleRate(communicationTrack ? SCO_SAMPLE_RATE : SAMPLE_RATE)
+                .setChannelMask(communicationTrack ? AudioFormat.CHANNEL_OUT_MONO : AudioFormat.CHANNEL_OUT_STEREO)
                 .build();
         return new AudioTrack.Builder()
-                .setAudioAttributes(attributes.build())
+                .setAudioAttributes(attributes)
                 .setAudioFormat(format)
                 .setBufferSizeInBytes(bufferBytes)
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build();
+    }
+
+    private AudioAttributes calibrationAudioAttributes(boolean communicationTrack) {
+        AudioAttributes.Builder attributes = new AudioAttributes.Builder();
+        if (communicationTrack) {
+            attributes.setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .setLegacyStreamType(AudioManager.STREAM_VOICE_CALL);
+        } else {
+            attributes.setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC);
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            attributes.setAllowedCapturePolicy(AudioAttributes.ALLOW_CAPTURE_BY_NONE);
+        }
+        return attributes.build();
+    }
+
+    private boolean requestCalibrationFocus(
+            AudioManager audioManager,
+            AudioAttributes attributes,
+            boolean communicationTrack
+    ) {
+        if (!CalibrationAudioFocusPolicy.shouldRequestTransientFocus(communicationTrack)) {
+            return true;
+        }
+        try {
+            int result;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                AudioFocusRequest request = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                        .setAudioAttributes(attributes)
+                        .setAcceptsDelayedFocusGain(false)
+                        .setWillPauseWhenDucked(false)
+                        .build();
+                result = audioManager.requestAudioFocus(request);
+                if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                    activeFocusRequest = request;
+                    AppLogger.i("SpeakerTest", "Calibration audio focus granted");
+                    return true;
+                }
+            } else {
+                result = audioManager.requestAudioFocus(
+                        null,
+                        communicationTrack ? AudioManager.STREAM_VOICE_CALL : AudioManager.STREAM_MUSIC,
+                        AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+                );
+                if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                    legacyFocusActive = true;
+                    AppLogger.i("SpeakerTest", "Calibration legacy audio focus granted");
+                    return true;
+                }
+            }
+            AppLogger.w("SpeakerTest", "Calibration audio focus not granted: result=" + result);
+        } catch (RuntimeException exception) {
+            AppLogger.w("SpeakerTest", "Calibration audio focus request failed: " + exception.getClass().getSimpleName());
+        }
+        return false;
+    }
+
+    private void abandonCalibrationFocus() {
+        AudioManager audioManager = activeAudioManager;
+        if (audioManager == null) {
+            audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+        }
+        if (audioManager == null) {
+            activeFocusRequest = null;
+            legacyFocusActive = false;
+            return;
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && activeFocusRequest != null) {
+                audioManager.abandonAudioFocusRequest(activeFocusRequest);
+                AppLogger.i("SpeakerTest", "Calibration audio focus abandoned");
+            } else if (legacyFocusActive) {
+                audioManager.abandonAudioFocus(null);
+                AppLogger.i("SpeakerTest", "Calibration legacy audio focus abandoned");
+            }
+        } catch (RuntimeException exception) {
+            AppLogger.w("SpeakerTest", "Calibration audio focus abandon failed: " + exception.getClass().getSimpleName());
+        } finally {
+            activeFocusRequest = null;
+            legacyFocusActive = false;
+        }
+    }
+
+    private void ensureCalibrationVolume(AudioManager audioManager, boolean communicationTrack) {
+        int streamType = communicationTrack ? AudioManager.STREAM_VOICE_CALL : AudioManager.STREAM_MUSIC;
+        try {
+            int minVolume = audioManager.getStreamMinVolume(streamType);
+            int maxVolume = audioManager.getStreamMaxVolume(streamType);
+            int target = CalibrationVolumePolicy.targetIndex(minVolume, maxVolume);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && audioManager.isStreamMute(streamType)) {
+                audioManager.adjustStreamVolume(streamType, AudioManager.ADJUST_UNMUTE, 0);
+                AppLogger.i("SpeakerTest", "Calibration stream unmuted: stream=" + streamType);
+            }
+            int current = audioManager.getStreamVolume(streamType);
+            if (current < target) {
+                audioManager.setStreamVolume(streamType, target, 0);
+                AppLogger.i(
+                        "SpeakerTest",
+                        "Calibration volume restored: stream=" + streamType
+                                + ", from=" + current + ", target=" + target + "/" + maxVolume
+                );
+            } else {
+                AppLogger.d(
+                        "SpeakerTest",
+                        "Calibration volume already audible: stream=" + streamType
+                                + ", current=" + current + ", target=" + target + "/" + maxVolume
+                );
+            }
+        } catch (RuntimeException exception) {
+            AppLogger.w("SpeakerTest", "Calibration volume restore failed: " + exception.getClass().getSimpleName());
+        }
     }
 
     private int writePcm(AudioTrack track, byte[] pcm, int bufferBytes) {
@@ -152,7 +351,7 @@ public final class SpeakerCalibrationPlayer {
         int writtenTotal = 0;
         while (offset < pcm.length) {
             int bytes = Math.min(bufferBytes, pcm.length - offset);
-            int written = track.write(pcm, offset, bytes);
+            int written = track.write(pcm, offset, bytes, AudioTrack.WRITE_BLOCKING);
             if (written < 0) {
                 AppLogger.w("SpeakerTest", "Calibration write returned " + written);
                 return writtenTotal;
@@ -165,6 +364,30 @@ public final class SpeakerCalibrationPlayer {
             writtenTotal += written;
         }
         return writtenTotal;
+    }
+
+    private void waitForPlaybackDrain(AudioTrack track, int targetFrames, long timeoutMs) throws InterruptedException {
+        long startedMs = SystemClock.elapsedRealtime();
+        int playedFrames = 0;
+        while (SystemClock.elapsedRealtime() - startedMs < timeoutMs) {
+            playedFrames = track.getPlaybackHeadPosition();
+            if (targetFrames > 0 && playedFrames >= targetFrames) {
+                AppLogger.i(
+                        "SpeakerTest",
+                        "Calibration playback drained: playedFrames=" + playedFrames
+                                + "/" + targetFrames
+                                + ", waitedMs=" + (SystemClock.elapsedRealtime() - startedMs)
+                );
+                return;
+            }
+            Thread.sleep(PLAYBACK_DRAIN_POLL_MS);
+        }
+        AppLogger.i(
+                "SpeakerTest",
+                "Calibration playback drain wait ended: playedFrames=" + playedFrames
+                        + "/" + targetFrames
+                        + ", timeoutMs=" + timeoutMs
+        );
     }
 
     private OutputBinding matchingOutput(StreamDevice route, List<OutputBinding> outputs) {
@@ -180,9 +403,35 @@ public final class SpeakerCalibrationPlayer {
         return AudioOutputRouteSupport.isDirectMediaRoute(descriptor) ? output : null;
     }
 
+    private OutputBinding firstDirectMediaOutput(List<OutputBinding> outputs) {
+        List<AudioOutputRouteMatcher.OutputDeviceDescriptor> descriptors = descriptors(outputs);
+        for (int i = 0; i < outputs.size(); i++) {
+            if (AudioOutputRouteSupport.isDirectMediaRoute(descriptors.get(i))) {
+                return outputs.get(i);
+            }
+        }
+        return null;
+    }
+
     private AudioDeviceInfo startCommunicationFallback(AudioManager audioManager, StreamDevice route) {
-        AudioDeviceInfo device = firstBluetoothScoOutput(audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS));
-        if (device == null) {
+        BluetoothHeadsetRouteActivator.Result activation = headsetRouteActivator.activate(route, 700L);
+        if (activation.attempted) {
+            AppLogger.i(
+                    "SpeakerTest",
+                    "Headset/SCO route activation for " + routeName(route, 0) + ": " + activation.message
+            );
+        } else {
+            AppLogger.d(
+                    "SpeakerTest",
+                    "Headset/SCO route activation skipped for " + routeName(route, 0) + ": " + activation.message
+            );
+        }
+        if (!activation.accepted) {
+            AppLogger.w("SpeakerTest", "Targeted Headset/SCO route was not accepted for " + routeName(route, 0));
+            return null;
+        }
+        AudioDeviceInfo genericScoDevice = firstBluetoothScoOutput(audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS));
+        if (genericScoDevice == null) {
             AppLogger.w("SpeakerTest", "No Bluetooth SCO route is exposed for " + routeName(route, 0));
             return null;
         }
@@ -190,10 +439,22 @@ public final class SpeakerCalibrationPlayer {
         audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
         activeAudioManager = audioManager;
         boolean communicationDeviceSet = false;
+        AudioDeviceInfo selectedCommunicationDevice = null;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             AudioDeviceInfo communicationDevice = preferredCommunicationDevice(audioManager, route);
+            if (communicationDevice == null) {
+                AppLogger.w(
+                        "SpeakerTest",
+                        "No matching Bluetooth communication route is exposed for " + routeName(route, 0)
+                                + "; generic SCO output will not be reused"
+                );
+                audioManager.setMode(previousAudioMode);
+                activeAudioManager = null;
+                return null;
+            }
             if (communicationDevice != null) {
                 communicationDeviceSet = audioManager.setCommunicationDevice(communicationDevice);
+                selectedCommunicationDevice = communicationDevice;
                 AppLogger.i(
                         "SpeakerTest",
                         "Communication route requested for " + routeName(route, 0)
@@ -204,10 +465,25 @@ public final class SpeakerCalibrationPlayer {
         } else {
             audioManager.startBluetoothSco();
             communicationDeviceSet = true;
+            selectedCommunicationDevice = genericScoDevice;
             AppLogger.i("SpeakerTest", "Legacy Bluetooth SCO start requested for " + routeName(route, 0));
         }
         communicationFallbackActive = communicationDeviceSet;
-        return device;
+        if (!communicationDeviceSet) {
+            AppLogger.w("SpeakerTest", "Communication route could not be set for " + routeName(route, 0));
+            return null;
+        }
+        waitForCommunicationRoute();
+        return selectedCommunicationDevice;
+    }
+
+    private void waitForCommunicationRoute() {
+        try {
+            Thread.sleep(850L);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            AppLogger.w("SpeakerTest", "Communication route settle interrupted");
+        }
     }
 
     private void stopCommunicationFallback() {
@@ -270,20 +546,16 @@ public final class SpeakerCalibrationPlayer {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             return null;
         }
-        AudioDeviceInfo fallback = null;
         for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
             if (!isBluetoothSco(device)) {
                 continue;
             }
             AppLogger.d("SpeakerTest", "Communication device: " + describe(device));
-            if (fallback == null) {
-                fallback = device;
-            }
             if (matchesRoute(route, device)) {
                 return device;
             }
         }
-        return fallback;
+        return null;
     }
 
     private AudioDeviceInfo firstBluetoothScoOutput(AudioDeviceInfo[] devices) {

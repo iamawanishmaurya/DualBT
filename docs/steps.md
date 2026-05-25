@@ -1334,7 +1334,602 @@
 - Action: Updated the one-speaker and calibration solution docs to reference the corrected generated-source-list test command and the final v0.2.21 activity-side route block.
 - Result: Solution documentation now matches the verified final implementation and commands.
 
+## 2026-05-24 23:40:34 IST - Log Required Physical Speaker Verification Gap
+
+- Action: Logged the user's report that only Mini boost 1 produces sound and Mini boost 2 remains silent, and recorded that physical speaker confirmation must be requested before claiming the route works.
+- Result: Added `docs/problems/2026-05-24-physical-mini-boost-2-silent.md`; next step is to set test volume to about 15% and run human-confirmed Test 1/Test 2 playback.
+
+## 2026-05-24 23:43:25 IST - Log Physical Test Tap Mistarget
+
+- Action: Set Android media volume to `2/15` for about 15% testing, attempted a calibration tap, and inspected logcat.
+- Result: The tap selected `Rockerz 110` because the UI was scrolled; added `docs/problems/2026-05-24-physical-test-tap-mistarget.md` and reset the test plan to use fresh UI bounds.
+
+## 2026-05-24 23:46:14 IST - Prepare Clean Physical Mini Boost Test
+
+- Action: Force-stopped and relaunched DualBT, set Android media volume to `2/15`, selected only `Mini boost 1` and `Mini boost 2`, scrolled back to the calibration buttons, and dumped the UI hierarchy.
+- Result: UI shows `Ready to stream`, `2/2`, and both `Test 1` and `Test 2` enabled; the next action is human-confirmed physical playback for each test.
+
+## 2026-05-24 23:50:58 IST - Run Human-Confirmed Test 1
+
+- Action: Pressed `Test 1` with both Mini Boost speakers selected and Android media volume at `2/15`, then asked the user which physical speaker produced sound.
+- Result: App logs show `Test 1` routed to the one exposed direct media route; the user heard sound from one speaker but could not identify whether it was Mini boost 1 or Mini boost 2.
+
+## 2026-05-24 23:55:24 IST - Run Human-Confirmed Test 2
+
+- Action: Pressed `Test 2` with both Mini Boost speakers selected and Android media volume at `2/15`, then asked the user what was heard physically.
+- Result: App logs show `Test 2` was blocked because Android exposes no direct media route for Mini boost 2, and the user confirmed no sound was produced.
+
+## 2026-05-24 23:58:16 IST - Research Repeated Mini Boost 2 Silence
+
+- Action: Re-ran the repeated-error research pass for classic A2DP routing, active A2DP device switching, AudioRouting verification, and Android system multi-device routing.
+- Result: Found five candidate paths: keep direct-route fail-closed, use speaker TWS pairing, use LE Audio/audio sharing hardware, use system/vendor combined routing, or experimentally request active A2DP handoff before calibration playback. The next implementation will test the active A2DP handoff path because it is the only app-side experiment that might make `Test 2` audible on the second speaker.
+
+## 2026-05-25 00:01:02 IST - Add Experimental A2DP Calibration Handoff
+
+- Action: Added `BluetoothA2dpRouteActivator`, wired calibration tests to request a Bluetooth A2DP active-device handoff before collecting output routes, and bumped the app to v0.2.22.
+- Result: `Test 2` can now attempt to switch Android's active Bluetooth media endpoint before playback, pending build and physical verification.
+
+## 2026-05-25 00:01:45 IST - Verify Plain Java Tests For v0.2.22
+
+- Action: Re-ran the generated-source-list plain Java test suite after adding the A2DP handoff helper.
+- Result: All plain Java tests exited with code 0.
+
+## 2026-05-25 00:03:11 IST - Build v0.2.22 APK
+
+- Action: Ran the offline clean debug Gradle build after adding the experimental calibration A2DP handoff.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 50s.
+
+## 2026-05-25 00:03:58 IST - Install v0.2.22 And Set Test Volume
+
+- Action: Verified APK badging, installed v0.2.22 on physical device `d1bc5c4a`, force-stopped the old process, set Android media volume to `2/15`, and checked installed package metadata.
+- Result: `adb install -r` returned `Success`; installed package reports versionName `0.2.22`, versionCode `23`; media volume is `2/15`.
+
+## 2026-05-25 00:05:24 IST - Prepare v0.2.22 Physical Test
+
+- Action: Launched v0.2.22, selected `Mini boost 1` and `Mini boost 2`, scrolled back to the calibration buttons, and dumped the UI hierarchy.
+- Result: UI shows `Ready to stream`, `2/2`, and both `Test 1` and `Test 2` enabled for physical playback verification.
+
+## 2026-05-24 23:54:18 IST - Log Muted Physical Test Volume
+
+- Action: Rechecked the connected physical device before the next human-confirmed Mini Boost test.
+- Result: Android media volume was `0/15`, so the current physical output state is invalid for verification; added `docs/problems/2026-05-24-test-volume-reset-to-zero.md` before resetting volume.
+
+## 2026-05-24 23:54:41 IST - Reset Physical Test Volume
+
+- Action: Set Android media volume back to `2/15`, the closest available system step to the requested 15% test volume, and rechecked it.
+- Result: `adb -s d1bc5c4a shell cmd media_session volume --get` reports `volume is 2 in range [0..15]`.
+
+## 2026-05-24 23:55:02 IST - Document Volume Reset Solution
+
+- Action: Added a paired solution note for the muted physical-test volume problem.
+- Result: Added `docs/solutions/test-volume-reset-to-zero.md`; future speaker tests must set and verify media volume before playback.
+
+## 2026-05-24 23:57:29 IST - Run Human-Confirmed v0.2.22 Test 2
+
+- Action: Cleared logcat, set Android media volume to `2/15`, pressed `Test 2`, and asked the user which physical speaker produced sound.
+- Result: The user confirmed `Mini boost 2` produced the tone. DualBT file logs show `setActiveDevice(Mini boost 4@41:42:2E:9E:5E:AE) returned true` and `Test 2 started for Mini boost 2`.
+
+## 2026-05-25 00:01:29 IST - Log Streaming Gap After Calibration Handoff
+
+- Action: Repeated `Test 1` at `2/15` after `Test 2`, asked the user for physical feedback, researched Android multi-output routing constraints, and inspected Xiaomi audio relay components.
+- Result: The user confirmed `Mini boost 1` produced the repeated `Test 1` tone. Added `docs/problems/2026-05-25-streaming-still-blocked-after-a2dp-handoff.md` because individual active-device switching does not yet prove simultaneous streaming.
+
+## 2026-05-25 00:02:15 IST - Add Failing Active Handoff Planner Test
+
+- Action: Added a plain Java planner test requiring the one-direct-A2DP-route case to enter an explicit active-device handoff experiment, then compiled the test suite before production code changes.
+- Result: Compilation failed as expected because `AudioOutputModePlanner.Plan` does not yet expose `useActiveA2dpHandoff`.
+
+## 2026-05-25 00:04:03 IST - Add Experimental Streaming Active Handoff
+
+- Action: Added `useActiveA2dpHandoff` planning, allowed the activity route gate to start the experimental path with a warning, and changed `AndroidAudioOutputRouter` to activate each selected A2DP target before creating and priming its `AudioTrack`.
+- Result: `AudioOutputModePlannerTest` now passes for the active-handoff planning case; full Android build and physical simultaneous playback verification are still pending.
+
+## 2026-05-25 00:04:24 IST - Bump Version For Streaming Handoff Experiment
+
+- Action: Updated Android version metadata to `0.2.23`/`24` and added the changelog entry for the experimental streaming active A2DP handoff path.
+- Result: v0.2.23 metadata is ready for build, install, and physical verification.
+
+## 2026-05-25 00:04:50 IST - Verify Plain Java Tests For v0.2.23
+
+- Action: Compiled and ran the generated-source-list plain Java test suite after adding the active handoff planner and router experiment.
+- Result: All plain Java tests exited with code 0.
+
+## 2026-05-25 00:06:07 IST - Build v0.2.23 APK
+
+- Action: Ran the offline clean debug Gradle build after adding the experimental streaming active A2DP handoff.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 51s.
+
+## 2026-05-25 00:07:01 IST - Install v0.2.23 And Set Test Volume
+
+- Action: Verified APK badging, installed v0.2.23 on physical device `d1bc5c4a`, granted runtime permissions, force-stopped the old process, launched DualBT, and set Android media volume to `2/15`.
+- Result: `adb install -r` returned `Success`; installed package reports versionName `0.2.23`, versionCode `24`; media volume is `2/15`.
+
+## 2026-05-25 00:09:25 IST - Log Streaming A2DP Proxy Timeout
+
+- Action: Selected `Mini boost 1` and `Mini boost 2`, started the v0.2.23 stream, accepted MediaProjection, and inspected service logs.
+- Result: The stream service stopped because the active A2DP handoff timed out twice while starting output tracks; added `docs/problems/2026-05-25-a2dp-profile-proxy-timeout-in-stream-router.md` before fixing.
+
+## 2026-05-25 00:10:13 IST - Move Capture Startup Off Main Thread
+
+- Action: Updated `DualBTService` to start playback capture and the experimental output router on a background starter thread, bumped the app to v0.2.24, and updated the changelog.
+- Result: The A2DP profile callback should no longer be blocked by `onStartCommand()` waiting on the main looper; build and physical verification are pending.
+
+## 2026-05-25 00:10:40 IST - Verify Plain Java Tests For v0.2.24
+
+- Action: Re-ran the generated-source-list plain Java test suite after moving capture startup to a background thread.
+- Result: All plain Java tests exited with code 0.
+
+## 2026-05-25 00:11:55 IST - Build v0.2.24 APK
+
+- Action: Ran the offline clean debug Gradle build after moving capture startup off the service main thread.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 52s.
+
+## 2026-05-25 00:12:42 IST - Install v0.2.24 And Reset Test Volume
+
+- Action: Verified APK badging, installed v0.2.24 on physical device `d1bc5c4a`, granted runtime permissions, force-stopped the old process, launched DualBT, and set Android media volume to `2/15`.
+- Result: `adb install -r` returned `Success`; installed package reports versionName `0.2.24`, versionCode `25`; media volume is `2/15`.
+
 ## 2026-05-24 23:44:08 IST - Commit v0.2.21 Route Blocking Fix
 
 - Action: Ran `git add -A`, confirmed staged status, and committed the direct-route validation, calibration gate, activity-side unsupported-route UI guard, v0.2.21 metadata, tests, and documentation.
 - Result: Created commit `c89ea1b` with message `fix: fail closed on unsupported dual bluetooth routes`.
+
+## 2026-05-25 00:14:35 IST - Resume Physical Stream Verification
+
+- Action: Rechecked the live repository state, connected Android device, installed DualBT package version, and Android media volume before continuing physical speaker testing.
+- Result: Device `d1bc5c4a` is connected; installed package reports versionName `0.2.24`, versionCode `25`; media volume remains `2/15`, which is the closest system step to the requested 15%.
+
+## 2026-05-25 00:15:20 IST - Log UIAutomator MIUI Warning
+
+- Action: Dumped the live DualBT UI hierarchy and captured the MIUI `theme_compatibility.xml` FileNotFoundException emitted by `uiautomator`.
+- Result: Added `docs/problems/2026-05-25-uiautomator-miui-theme-config-missing.md`; the hierarchy dump still returned usable XML, so physical app control continued.
+
+## 2026-05-25 00:16:40 IST - Apply Safe UI Dump Workaround
+
+- Action: Stopped raw `uiautomator dump /dev/tty` retries after the repeated MIUI warning, reviewed alternative fixes, used `scripts/dump-ui-safe.sh`, and validated the pulled hierarchy XML.
+- Result: Updated `docs/solutions/uiautomator-miui-theme-config-missing.md`; `/tmp/dualbt-v0224-two-selected.xml` confirms both `Mini boost 1` and `Mini boost 2` are selected and `Start Stream` is enabled.
+
+## 2026-05-25 00:19:18 IST - Log Stream A2DP Invocation Failure
+
+- Action: Started the v0.2.24 stream, accepted MediaProjection, and inspected service logs after the foreground service stopped.
+- Result: Added `docs/problems/2026-05-25-active-a2dp-invocationtargetexception-stream-router.md`; stream setup reached `Mini boost 1`, then failed preparing `Mini boost 2` with `A2DP active-device switch unavailable: InvocationTargetException`.
+
+## 2026-05-25 00:21:03 IST - Inspect Platform A2DP Routing Evidence
+
+- Action: Collected `logcat`, `dumpsys audio`, and `dumpsys bluetooth_manager` evidence after the v0.2.24 stream failure.
+- Result: The platform did switch the active A2DP device from `Mini boost 1` to `Mini boost 2`, but `A2dpService` reported `isMultiA2dpSupported(false)` and only one `bt_a2dp` output address was connected through AudioManager at a time.
+
+## 2026-05-25 00:25:02 IST - Add Failing Hybrid Split Planner Test
+
+- Action: Added `HybridBluetoothSplitPlannerTest` for a guarded A2DP-plus-targeted-SCO route plan and ran it before adding production code.
+- Result: The test failed as expected because `HybridBluetoothSplitPlanner` does not exist yet.
+
+## 2026-05-25 00:27:10 IST - Implement Hybrid Split Planner
+
+- Action: Added `HybridBluetoothSplitPlanner`, corrected the route-index expectation in its test, and re-ran the focused planner test.
+- Result: `HybridBluetoothSplitPlannerTest` exits with code 0 and only enables the hybrid path for one direct A2DP route, one unmatched selected speaker, and an available SCO output.
+
+## 2026-05-25 00:31:12 IST - Add Targeted Headset SCO Split Path
+
+- Action: Added `BluetoothHeadsetRouteActivator`, wired the output router to prefer the hybrid A2DP-plus-targeted-SCO split, improved reflective A2DP failure logging, bumped the app to v0.2.25, and updated the changelog.
+- Result: The plain Java test suite exits with code 0; Android build and physical speaker verification are pending.
+
+## 2026-05-25 00:32:25 IST - Build v0.2.25 APK
+
+- Action: Ran the offline clean debug Gradle build after adding the hybrid Bluetooth split path.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 49s.
+
+## 2026-05-25 00:33:28 IST - Install v0.2.25 And Reset Volume
+
+- Action: Verified APK badging, installed v0.2.25 on physical device `d1bc5c4a`, granted `BLUETOOTH_CONNECT`, skipped the known Android 13-only `POST_NOTIFICATIONS` grant on API 31, launched DualBT, and set media volume to `2/15`.
+- Result: `adb install -r` returned `Success`; installed package reports versionName `0.2.25`, versionCode `26`; media volume remains `2/15`.
+
+## 2026-05-25 00:34:26 IST - Select Mini Boost Speakers In v0.2.25
+
+- Action: Selected `Mini boost 1` and `Mini boost 2` in the v0.2.25 UI and validated the hierarchy with `scripts/dump-ui-safe.sh`.
+- Result: `/tmp/dualbt-v0225-two-selected.xml` shows both Mini Boost speakers selected and `Start Stream` enabled.
+
+## 2026-05-25 00:36:18 IST - Start v0.2.25 Hybrid Stream
+
+- Action: Cleared logcat, kept media volume at `2/15`, started the stream, accepted MediaProjection, and inspected service/log evidence.
+- Result: `DualBTService` is running as a foreground service; the hybrid router started 2 tracks: `Mini boost 1` on A2DP media and `Mini boost 2` on targeted communication-SCO.
+
+## 2026-05-25 00:35:12 IST - Resume Mini Boost 2 Physical Silence Debug
+
+- Action: Rechecked the dirty worktree, connected device, DualBT file logs, and Android media volume after the user reported that only `Mini boost 1` produces sound during speaker testing.
+- Result: Device `d1bc5c4a` is connected; media volume is `2/15`; DualBT logs show two software tracks started in v0.2.25, but physical `Mini boost 2` output is not user-confirmed and remains the blocking acceptance criterion.
+
+## 2026-05-25 00:36:35 IST - Log Mini Boost 2 SCO Test Silence
+
+- Action: Logged the repeated physical `Mini boost 2` silence report and the current v0.2.25 routing evidence before making another fix.
+- Result: Added `docs/problems/2026-05-25-mini-boost-2-sco-test-silent.md`; first hypothesis is a SCO/HFP format and calibration-routing mismatch rather than a UI selection issue.
+
+## 2026-05-25 00:38:39 IST - Add Failing SCO PCM Converter Test
+
+- Action: Added `Pcm16ScoConverterTest` for converting stereo 48 kHz PCM into mono 16 kHz SCO-compatible PCM and ran it before adding production code.
+- Result: The test failed as expected because `Pcm16ScoConverter` does not exist yet.
+
+## 2026-05-25 00:39:14 IST - Implement SCO PCM Converter
+
+- Action: Added `Pcm16ScoConverter` and re-ran the focused converter test.
+- Result: `Pcm16ScoConverterTest` exits with code 0, converting stereo 48 kHz chunks into mono 16 kHz PCM while carrying frame remainder across chunks.
+
+## 2026-05-25 00:41:33 IST - Wire Targeted SCO Audio Format
+
+- Action: Wired `Pcm16ScoConverter` into the hybrid stream router, changed communication tracks to mono 16 kHz `STREAM_VOICE_CALL`, enabled targeted Headset/SCO for calibration tests, and bumped metadata to v0.2.26.
+- Result: Source edits are complete; plain Java and Android build verification are pending.
+
+## 2026-05-25 00:42:08 IST - Verify Plain Java Tests For v0.2.26
+
+- Action: Ran the focused `Pcm16ScoConverterTest`, then compiled and ran every `app/src/test/java/**/*Test.java` main against the current source tree.
+- Result: Focused and full plain Java test commands exited with code 0.
+
+## 2026-05-25 00:43:26 IST - Build v0.2.26 APK
+
+- Action: Ran the offline clean debug Gradle build after converting the Headset/SCO leg to mono 16 kHz voice-call PCM.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 56s.
+
+## 2026-05-25 00:44:08 IST - Install v0.2.26 And Set Test Volume
+
+- Action: Verified APK badging, installed v0.2.26 on physical device `d1bc5c4a`, granted `BLUETOOTH_CONNECT`, force-stopped the app, and set Android media volume to `2/15`.
+- Result: `adb install -r` returned `Success`; installed package reports versionName `0.2.26`, versionCode `27`; media volume is `2/15`.
+
+## 2026-05-25 00:46:14 IST - Log Test 2 Reused A2DP Output
+
+- Action: Selected both Mini Boost speakers, tapped `Test 2`, and inspected file logs before asking for physical confirmation.
+- Result: Added `docs/problems/2026-05-25-test2-reused-mini-boost-1-a2dp-output.md`; `Test 2` still routed to the visible A2DP output address for `Mini boost 1`, so the physical prompt was deferred until this software routing error is fixed.
+
+## 2026-05-25 00:47:12 IST - Add Failing Calibration Route Planner Test
+
+- Action: Added `SpeakerCalibrationRoutePlannerTest` to require targeted SCO when no direct output matches the selected speaker address.
+- Result: The test failed as expected because `SpeakerCalibrationRoutePlanner` does not exist yet.
+
+## 2026-05-25 00:48:20 IST - Fix Calibration A2DP Reuse
+
+- Action: Added `SpeakerCalibrationRoutePlanner`, removed the unsafe `Test 2` fallback to the first visible A2DP output, bumped metadata to v0.2.27, and ran focused plus full plain Java tests.
+- Result: `SpeakerCalibrationRoutePlannerTest` and the full plain Java test suite exit with code 0.
+
+## 2026-05-25 00:49:38 IST - Build v0.2.27 APK
+
+- Action: Ran the offline clean debug Gradle build after removing the unsafe calibration A2DP reuse fallback.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 54s.
+
+## 2026-05-25 00:50:15 IST - Install v0.2.27 And Reset Test Volume
+
+- Action: Verified APK badging, installed v0.2.27 on physical device `d1bc5c4a`, granted `BLUETOOTH_CONNECT`, force-stopped the app, and set Android media volume to `2/15`.
+- Result: `adb install -r` returned `Success`; installed package reports versionName `0.2.27`, versionCode `28`; media volume is `2/15`.
+
+## 2026-05-25 00:52:34 IST - Run v0.2.27 Test 2 Physical Check
+
+- Action: Selected `Mini boost 1` and `Mini boost 2`, tapped `Test 2`, inspected logs, and asked the user which physical speaker produced the beep.
+- Result: Logs show `Test 2` used targeted Headset/SCO for `Mini boost 2`; the user heard one speaker but could not identify which one, so verification remains open.
+
+## 2026-05-25 00:53:46 IST - Log Test 1 No Sound After SCO
+
+- Action: Ran `Test 1` for A/B comparison after targeted `Test 2` and asked the user which speaker played.
+- Result: Added `docs/problems/2026-05-25-test1-no-sound-after-sco-test.md`; user reported no sound even though logs show a preferred Mini boost 1 A2DP route, so the physical verification loop remains blocked.
+
+## 2026-05-25 00:54:39 IST - Log Calibration Volume Reset
+
+- Action: Collected `dumpsys audio`, `dumpsys bluetooth_manager`, and media-session volume state after `Test 1` produced no sound.
+- Result: Added `docs/problems/2026-05-25-calibration-volume-reset-after-bluetooth-handoff.md`; media volume was `0/15` and `STREAM_MUSIC` was muted after Bluetooth route changes, so calibration playback must restore the low test volume in-app.
+
+## 2026-05-25 00:55:23 IST - Add Failing Calibration Volume Policy Test
+
+- Action: Added `CalibrationVolumePolicyTest` for low-but-audible calibration stream volume mapping.
+- Result: The test failed as expected because `CalibrationVolumePolicy` does not exist yet.
+
+## 2026-05-25 08:37:44 IST - Implement Calibration Volume Restore
+
+- Action: Added `CalibrationVolumePolicy`, declared `MODIFY_AUDIO_SETTINGS`, restored/unmuted the active calibration stream before each test tone, bumped metadata to v0.2.28, and re-ran focused plus full plain Java tests.
+- Result: `CalibrationVolumePolicyTest` and the full plain Java test suite exit with code 0.
+
+## 2026-05-25 08:39:05 IST - Build v0.2.28 APK
+
+- Action: Ran the offline clean debug Gradle build after adding in-app calibration volume restore and `MODIFY_AUDIO_SETTINGS`.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 54s.
+
+## 2026-05-25 08:39:47 IST - Install v0.2.28 And Reset Test Volume
+
+- Action: Verified APK badging, installed v0.2.28 on physical device `d1bc5c4a`, granted `BLUETOOTH_CONNECT`, force-stopped the app, and set Android media volume to `2/15`.
+- Result: `adb install -r` returned `Success`; installed package reports versionName `0.2.28`, versionCode `29`; media volume is `2/15`.
+2026-05-25 08:44:52 IST - Confirm v0.2.28 Device State
+- Action: Verified device d1bc5c4a is connected, com.xpwnit.dualbt is installed as versionName 0.2.28/versionCode 29, and Android media volume is 2/15; dumped the live UI before physical retesting.
+- Result: Device and app version are correct, but the UI had reset to 0/2 selected devices and 100% in-app gain, so speaker selection and low-gain setup must be redone before Test 1/Test 2.
+2026-05-25 08:46:01 IST - Prepare Physical Speaker Retest
+- Action: Re-selected Mini boost 1 and Mini boost 2 on device d1bc5c4a, scrolled back to the test controls, set Android media volume to 2/15, and reduced in-app gain to 10% before running any beep.
+- Result: UI shows Ready to stream, 2/2 selected, Test 1/Test 2 enabled, and 10% in-app gain; hardware retest can proceed at low volume.
+2026-05-25 08:46:59 IST - Log UI State Reset Blocker
+- Action: Captured a new problem report for UIAutomator-triggered Activity recreation resetting selected speakers and in-app gain before physical Test 1 could run.
+- Result: Created docs/problems/2026-05-25-uiautomator-dump-resets-test-state.md; next step is to persist calibration state across Activity/ViewModel recreation.
+2026-05-25 08:48:51 IST - Add Failing State Persistence Tests
+- Action: Added plain Java tests for restoring selected speakers after Activity recreation and encoding selected speaker addresses in order, then ran the focused state test compile.
+- Result: The focused compile failed as expected because `StreamSessionController.restoreSelected(...)` and `StreamSessionStateCodec` do not exist yet; this confirms the regression tests cover the missing persistence behavior.
+2026-05-25 08:49:57 IST - Implement Activity State Persistence
+- Action: Added `StreamSessionStateCodec`, `StreamSessionController.restoreSelected(...)`, and `MainActivity` SharedPreferences wiring for selected speaker addresses plus output gain; reran the focused state persistence tests.
+- Result: Focused state persistence tests compile and run with exit code 0, confirming selected speaker order and output gain can survive Activity/ViewModel recreation.
+2026-05-25 08:50:24 IST - Bump v0.2.29 For State Persistence
+- Action: Updated Android version metadata to versionName 0.2.29/versionCode 30 and added a changelog entry for persisted selected speakers and output gain.
+- Result: Version metadata and changelog are ready for full test/build/install verification.
+2026-05-25 08:50:47 IST - Run Full Plain Java Tests For v0.2.29
+- Action: Compiled and ran every `app/src/test/java/**/*Test.java` main with `javac`/`java` against the current source tree.
+- Result: Full plain Java test suite exited with code 0.
+2026-05-25 08:52:18 IST - Build v0.2.29 APK
+- Action: Ran the offline Android debug build with the local Android SDK, offline Maven cache, patched Gradle Java options, and debug keystore.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 1m 7s and produced `app/build/outputs/apk/debug/app-debug.apk`.
+2026-05-25 08:52:47 IST - Install v0.2.29 On Physical Device
+- Action: Installed `app/build/outputs/apk/debug/app-debug.apk` on device `d1bc5c4a`, launched `com.xpwnit.dualbt/.MainActivity`, verified package metadata, and reset Android media volume to 2/15.
+- Result: Device reports DualBT versionName `0.2.29`, versionCode `30`, and media volume `2/15`.
+2026-05-25 08:53:43 IST - Verify UI State Persistence On Device
+- Action: On installed v0.2.29, selected Mini boost 1 and Mini boost 2, reduced in-app gain to 10%, set Android media volume to 2/15, then ran `scripts/dump-ui-safe.sh` to reproduce the previous Activity recreation path.
+- Result: UI still showed Ready to stream, 2/2, Test 1/Test 2 enabled, and 10% after the dump; created docs/solutions/uiautomator-dump-resets-test-state.md.
+2026-05-25 08:54:35 IST - Run Physical Test 1 Beep
+- Action: With v0.2.29 ready at 2/2 and 10% gain, set Android media volume to 2/15, tapped `Test 1`, waited for playback, then captured the app log and media volume.
+- Result: App log shows `Calibration test requested for Mini boost 1`, targeted Headset/SCO fallback for Mini boost 1, and `Test 1 started`; `cmd media_session volume --get` reported media volume `0/15` after the test, so physical user confirmation is required before proceeding.
+2026-05-25 08:55:35 IST - Log Repeated Test 1 No-Sound Failure
+- Action: Recorded the user-confirmed `No sound` result for `Test 1` on v0.2.29, including route logs showing communication-SCO fallback selected the phone route.
+- Result: Created docs/problems/2026-05-25-test1-sco-fallback-no-sound-v0229.md; because this no-sound failure has appeared before, the next step is web research before another fix attempt.
+2026-05-25 08:59:35 IST - Add Failing Route Retry Tests
+- Action: Added focused plain Java tests requiring a delayed route rescan after A2DP activation attempts and requiring generic SCO routes to block instead of being treated as selected speakers.
+- Result: Focused compile failed as expected because `RouteRetryPolicy` does not exist and `SpeakerCalibrationRoutePlanner.plan(...)` has not yet been extended to distinguish matched communication routes from generic SCO.
+2026-05-25 09:00:35 IST - Implement Route Rescan And Strict SCO Match
+- Action: Added `RouteRetryPolicy`, extended `SpeakerCalibrationRoutePlanner` to distinguish matched communication routes from generic SCO, added delayed A2DP route rescans after activation attempts, and blocked generic phone/SCO reuse.
+- Result: Focused route retry and calibration route planner tests compile and run with exit code 0.
+2026-05-25 09:01:05 IST - Bump v0.2.30 For Route Rescan Fix
+- Action: Updated Android version metadata to versionName 0.2.30/versionCode 31 and added a changelog entry for delayed route rescans plus strict SCO route matching.
+- Result: Version metadata and changelog are ready for full test/build/install verification.
+2026-05-25 09:01:41 IST - Run Full Plain Java Tests For v0.2.30
+- Action: Compiled and ran every `app/src/test/java/**/*Test.java` main with the updated route rescan and strict SCO route matching changes.
+- Result: Full plain Java test suite exited with code 0.
+2026-05-25 09:03:15 IST - Build v0.2.30 APK
+- Action: Ran the offline Android debug build with the local SDK, offline Maven cache, patched Gradle Java options, and debug keystore.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 1m 9s and produced `app/build/outputs/apk/debug/app-debug.apk`.
+2026-05-25 09:03:52 IST - Install v0.2.30 And Confirm Ready State
+- Action: Installed v0.2.30 on device `d1bc5c4a`, launched the app, verified versionName `0.2.30`/versionCode `31`, set Android media volume to 2/15, and dumped the UI.
+- Result: UI shows Ready to stream, 2/2 selected, 10% gain, and enabled Test 1/Test 2 after install.
+2026-05-25 09:04:24 IST - Run Physical Test 1 On v0.2.30
+- Action: With v0.2.30 ready at 2/2 and 10% gain, set Android media volume to 2/15, tapped `Test 1`, waited, then captured logs and media volume.
+- Result: App restored saved speaker state, attempted A2DP activation, performed delayed rescans, found only Mini boost 2 as the visible A2DP output, refused generic phone/SCO fallback, and blocked Test 1 instead of falsely starting playback; media volume remained 2/15.
+2026-05-25 09:05:36 IST - Log Stale AudioDeviceInfo After A2DP Switch
+- Action: Retried `Test 1` after the user asked to try again and captured logs showing accepted A2DP active-device switching but stale `AudioDeviceInfo` output addresses.
+- Result: Created docs/problems/2026-05-25-audio-device-info-stale-after-a2dp-switch.md; next fix will allow default media playback after accepted A2DP activation when the public route list is stale.
+2026-05-25 09:06:38 IST - Add Failing Default Media Route Test
+- Action: Added a planner test for the accepted-A2DP-switch but stale-`AudioDeviceInfo` case, expecting default media playback instead of SCO fallback or blocking.
+- Result: Focused compile failed as expected because the planner does not yet expose a default-media route option.
+2026-05-25 09:07:28 IST - Implement Default Media After Accepted A2DP Switch
+- Action: Extended the calibration route planner with `useDefaultMedia`, then changed `SpeakerCalibrationPlayer` to play a media track without `setPreferredDevice()` when Android accepts the target A2DP active-device switch but the public route list remains stale.
+- Result: Focused calibration route planner test compiles and runs with exit code 0.
+2026-05-25 09:07:49 IST - Bump v0.2.31 For Default Media Route
+- Action: Updated Android version metadata to versionName 0.2.31/versionCode 32 and added a changelog entry for default media playback after accepted A2DP activation with stale public route data.
+- Result: Version metadata and changelog are ready for full test/build/install verification.
+2026-05-25 09:08:18 IST - Run Full Plain Java Tests For v0.2.31
+- Action: Compiled and ran every `app/src/test/java/**/*Test.java` main with the default-media route fallback changes.
+- Result: Full plain Java test suite exited with code 0.
+2026-05-25 09:10:05 IST - Build v0.2.31 APK
+- Action: Ran the offline Android debug build with the local SDK, offline Maven cache, patched Gradle Java options, and debug keystore.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 1m 23s and produced `app/build/outputs/apk/debug/app-debug.apk`.
+2026-05-25 09:12:15 IST - Install v0.2.31 And Check Test Readiness
+- Action: Installed v0.2.31 on device `d1bc5c4a`, launched the app, verified versionName `0.2.31`/versionCode `32`, set Android media volume to 2/15, and dumped the UI.
+- Result: UI shows Ready to stream with 2/2 selected and enabled Test 1/Test 2, but the in-app gain shows 100%, so the next step is to lower gain before any audible physical test.
+2026-05-25 09:13:32 IST - Lower Physical Test Volume For v0.2.31
+- Action: Tapped the in-app volume-down control nine times, set Android media volume to 2/15, and dumped the UI to verify the state before audible testing.
+- Result: UI shows Ready to stream, 2/2 selected, Test 1/Test 2 enabled, and 10% in-app gain; Android media volume is 2/15, which is the device stream index closest to the requested 15% test volume.
+2026-05-25 09:14:23 IST - Run Physical Test 1 On v0.2.31
+- Action: Cleared logcat, kept Android media volume at 2/15, tapped Test 1, waited six seconds, and captured the app file log plus media-volume state.
+- Result: The app accepted the Mini boost 1 A2DP active-device switch, public `AudioDeviceInfo` still exposed Mini boost 2 as the visible A2DP route, and the calibration tone started with mode `media-default-after-a2dp-activation`; physical speaker confirmation is required before deciding whether the fallback works.
+2026-05-25 09:15:14 IST - Log v0.2.31 Test 1 No-Sound Failure
+- Action: Recorded the user's physical confirmation that v0.2.31 Test 1 produced no sound after the accepted-A2DP/default-media fallback.
+- Result: Created `docs/problems/2026-05-25-test1-default-media-no-sound-v0231.md`; because the no-sound failure has repeated across route strategies, the next step is fresh route-behavior research before another fix.
+2026-05-25 09:16:55 IST - Research And Inspect Repeated No-Sound Routing Failure
+- Action: Reviewed Android/AOSP routing documentation and captured live `dumpsys bluetooth_manager` plus `dumpsys audio` evidence after the no-sound run.
+- Result: Android exposes only one A2DP media route to normal apps, true multi-device strategy routing is system-level, and the current calibration code releases its `AudioTrack` shortly after writing PCM; the next patch will keep the calibration track alive until playback has had time to drain before declaring a test complete.
+2026-05-25 09:18:05 IST - Add Failing Playback Drain Test
+- Action: Added `CalibrationPlaybackWaitPolicyTest` to require frame-count calculation and a bounded Bluetooth playback-drain tail for calibration tones.
+- Result: Focused compile failed as expected because `CalibrationPlaybackWaitPolicy` does not exist yet.
+2026-05-25 09:19:22 IST - Keep Calibration AudioTrack Alive Until Drain
+- Action: Added `CalibrationPlaybackWaitPolicy`, switched calibration writes to explicit blocking mode, and changed `SpeakerCalibrationPlayer` to wait for playback-head progress or a bounded Bluetooth tail before releasing the `AudioTrack`.
+- Result: Focused playback-wait test compiles and runs with exit code 0.
+2026-05-25 09:20:02 IST - Bump v0.2.32 For Calibration Drain Fix
+- Action: Updated Android version metadata to versionName `0.2.32`/versionCode `33` and added a changelog entry for calibration playback-drain waiting.
+- Result: Version metadata and changelog are ready for full test/build/install verification.
+2026-05-25 09:20:31 IST - Run Full Plain Java Tests For v0.2.32
+- Action: Compiled and ran every `app/src/test/java/**/*Test.java` main with the calibration playback-drain changes.
+- Result: Full plain Java test suite exited with code 0.
+2026-05-25 09:22:18 IST - Build v0.2.32 APK
+- Action: Ran the offline Android debug build with the local SDK, offline Maven cache, patched Gradle Java options, and debug keystore.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 1m 36s and produced `app/build/outputs/apk/debug/app-debug.apk`.
+2026-05-25 09:23:03 IST - Install v0.2.32 And Check Test Readiness
+- Action: Installed v0.2.32 on device `d1bc5c4a`, launched the app, verified versionName `0.2.32`/versionCode `33`, set Android media volume to 2/15, and dumped the UI.
+- Result: UI shows Ready to stream with 2/2 selected and enabled Test 1/Test 2, but the in-app gain is back at 100%, so the test setup must lower gain again before audible verification.
+2026-05-25 09:24:11 IST - Lower Physical Test Volume For v0.2.32
+- Action: Tapped the in-app volume-down control nine times, kept Android media volume at 2/15, and dumped the UI to verify physical-test volume.
+- Result: UI shows Ready to stream, 2/2 selected, Test 1/Test 2 enabled, and 10% in-app gain; Android media volume remains 2/15.
+2026-05-25 09:24:57 IST - Run Physical Test 1 On v0.2.32
+- Action: Cleared logcat, kept Android media volume at 2/15, tapped Test 1, waited eight seconds, then captured app logs, media-volume state, and audio dumpsys playback routing.
+- Result: The app started Test 1 with mode `media-default-after-a2dp-activation`, wrote 614400 bytes, calculated 153600 target frames with a 4700 ms drain timeout, and audio dumpsys shows the AudioTrack routed to Bluetooth A2DP deviceId 7449 for roughly 3.4 seconds; physical speaker confirmation is required before deciding whether this fixed the audible test.
+2026-05-25 09:25:31 IST - Log v0.2.32 Test 1 No-Sound Failure
+- Action: Recorded the user's physical confirmation that v0.2.32 Test 1 still produced no sound despite playback-drain waiting.
+- Result: Created `docs/problems/2026-05-25-test1-playback-drain-no-sound-v0232.md`; the next step is to run Test 2 at the same low volume to determine whether the other selected route is audible.
+2026-05-25 09:26:54 IST - Run Physical Test 2 On v0.2.32
+- Action: Cleared logcat, kept Android media volume at 2/15, tapped Test 2, waited eight seconds, then captured app logs, media-volume state, and audio dumpsys playback routing.
+- Result: Test 2 activated A2DP address `41:42:2E:9E:5E:AE`, used direct media mode with `preferredAccepted=true`, wrote 614400 bytes, and audio dumpsys shows A2DP active-device change plus a routed AudioTrack on deviceId 7449 for roughly 3.8 seconds; physical speaker confirmation is required.
+2026-05-25 09:27:26 IST - Log v0.2.32 Test 2 No-Sound Failure
+- Action: Recorded the user's physical confirmation that v0.2.32 Test 2 produced no sound despite direct preferred A2DP routing and playback-drain waiting.
+- Result: Created `docs/problems/2026-05-25-test2-direct-a2dp-no-sound-v0232.md`; the next discriminator is controlled audio-focus or volume testing because both Test 1 and Test 2 are silent at Android media volume 2/15.
+2026-05-25 09:28:52 IST - Capture YouTube Warmed Test 2 Route Evidence
+- Action: Recorded the user's report that local YouTube playback made music audible on the Test 2 route, then captured media volume, audio-focus state, Android audio routing, and app logs without intentionally changing playback.
+- Result: `dumpsys audio` shows YouTube owns media audio focus, STREAM_MUSIC on A2DP is 9/15, and Android's connected A2DP device is `41:42:2E:9E:5E:AE`; updated `docs/problems/2026-05-25-test2-direct-a2dp-no-sound-v0232.md` with this evidence.
+2026-05-25 09:29:36 IST - Confirm Test 2 Physical Speaker Mapping
+- Action: Asked the user which physical speaker played after YouTube warmed the Test 2 route.
+- Result: User confirmed Mini boost 2 played, so the direct A2DP route for Test 2 maps to the intended speaker when media audio focus/volume are active.
+2026-05-25 09:30:22 IST - Add Failing Calibration Audio Focus Test
+- Action: Added `CalibrationAudioFocusPolicyTest` requiring calibration tests to request transient audio focus and use clipped-safe maximum tone gain.
+- Result: Focused compile failed as expected because `CalibrationAudioFocusPolicy` does not exist yet.
+2026-05-25 09:31:26 IST - Implement Calibration Audio Focus
+- Action: Added `CalibrationAudioFocusPolicy`, raised calibration tone generation to the clipped-safe 0.9 gain, and updated `SpeakerCalibrationPlayer` to request and abandon transient audio focus around each test tone while logging focus status.
+- Result: Focused calibration audio-focus policy test compiles and runs with exit code 0.
+2026-05-25 09:31:56 IST - Bump v0.2.33 For Calibration Focus Fix
+- Action: Updated Android version metadata to versionName `0.2.33`/versionCode `34` and added a changelog entry for calibration transient audio focus plus clipped-safe tone gain.
+- Result: Version metadata and changelog are ready for full test/build/install verification.
+2026-05-25 09:32:28 IST - Run Full Plain Java Tests For v0.2.33
+- Action: Compiled and ran every `app/src/test/java/**/*Test.java` main with the calibration audio-focus changes.
+- Result: Full plain Java test suite exited with code 0.
+2026-05-25 09:33:44 IST - Build v0.2.33 APK
+- Action: Ran the offline Android debug build with the local SDK, offline Maven cache, patched Gradle Java options, and debug keystore.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 1m and produced `app/build/outputs/apk/debug/app-debug.apk`.
+2026-05-25 09:34:19 IST - Install v0.2.33 And Detect Volume Drift
+- Action: Installed v0.2.33 on device `d1bc5c4a`, launched the app, verified versionName `0.2.33`/versionCode `34`, attempted to set Android media volume to 2/15, and dumped the UI.
+- Result: UI shows Ready to stream with 2/2 selected and enabled Test 1/Test 2, but in-app gain reset to 100% and Android media volume reads 8/15; created `docs/problems/2026-05-25-media-volume-set-command-not-sticking.md` before fixing test setup.
+2026-05-25 09:35:17 IST - Stabilize Physical Test Media Volume
+- Action: Paused media playback, force-stopped YouTube, set Android media volume to 2/15, waited one second, and read media volume again.
+- Result: Android media volume now reads 2/15; created `docs/solutions/media-volume-set-command-not-sticking.md`.
+2026-05-25 09:36:02 IST - Lower Physical Test Volume For v0.2.33
+- Action: Tapped the in-app volume-down control nine times, set Android media volume to 2/15, read media volume, and dumped the UI.
+- Result: UI shows Ready to stream, 2/2 selected, Test 1/Test 2 enabled, and 10% in-app gain; Android media volume reads 2/15.
+2026-05-25 09:36:44 IST - Run Physical Test 2 On v0.2.33
+- Action: Cleared logcat, kept Android media volume at 2/15, tapped Test 2, waited eight seconds, then captured app logs, media-volume state, and audio dumpsys playback/focus routing.
+- Result: Test 2 requested and received transient audio focus, used direct A2DP media mode for address `41:42:2E:9E:5E:AE`, routed to Bluetooth deviceId 7449, wrote 614400 bytes, drained 153600 frames, abandoned focus, and Android media volume remained 2/15; physical speaker confirmation is required.
+2026-05-25 09:37:25 IST - Log v0.2.33 Test 2 Low-Volume No-Sound Failure
+- Action: Recorded the user's physical confirmation that v0.2.33 Test 2 produced no beep at Android media volume 2/15, while song playback became audible when the user started music again.
+- Result: Created `docs/problems/2026-05-25-test2-focus-route-no-sound-at-2-v0233.md`; next step is to follow the user's instruction and retest Test 2 at Android media volume 9/15.
+2026-05-25 09:42:15 IST - Log Missed Test 2 9/15 Rerun
+- Action: Captured the failed Test 2 rerun setup after the user restarted YouTube and checked foreground focus plus Android media volume.
+- Result: `dumpsys window` shows YouTube in foreground and Android media volume reads 9/15, matching `docs/problems/2026-05-25-test2-9-volume-tap-missed-youtube-foreground.md`; the next step is to bring DualBT foreground before retrying Test 2.
+2026-05-25 09:42:15 IST - Capture User YouTube Test 2 Route Confirmation
+- Action: Recorded the user's report that YouTube music is playing after selecting the Test 2 route.
+- Result: This confirms the physical Test 2 A2DP route can carry normal media at Android media volume 9/15; the app-generated Test 2 tone must now be tested from DualBT foreground at the same volume.
+2026-05-25 09:42:59 IST - Restore DualBT Foreground For Test 2 9/15
+- Action: Paused media, force-stopped YouTube, launched DualBT, set Android media volume to 9/15, verified DualBT has foreground focus, and dumped the UI.
+- Result: UI shows Ready to stream, 2/2 selected, 10% in-app gain, and enabled Test 1/Test 2 controls; created `docs/solutions/test2-9-volume-tap-missed-youtube-foreground.md`.
+2026-05-25 09:43:43 IST - Run v0.2.33 Test 2 At Android Volume 9/15
+- Action: Cleared logcat, tapped DualBT's Test 2 button from the verified foreground UI, waited eight seconds, and captured app logs plus Android audio routing and volume state.
+- Result: DualBT requested and received transient audio focus, activated A2DP address `41:42:2E:9E:5E:AE`, routed to `Mini boost 4` as speaker 2, wrote and drained 614400 bytes of calibration PCM, abandoned focus, and Android media volume remained 9/15; physical speaker confirmation is required.
+2026-05-25 09:45:04 IST - Confirm Test 2 Physical Output At 9/15
+- Action: Asked the user which physical speaker produced the v0.2.33 Test 2 beep at Android media volume 9/15.
+- Result: User confirmed `Mini boost 2`; created `docs/solutions/test2-focus-route-no-sound-at-2-v0233.md` and `docs/solutions/test2-direct-a2dp-no-sound-v0232.md`.
+2026-05-25 09:45:54 IST - Verify Test 1 9/15 Setup
+- Action: Checked Android media volume and foreground focus before switching from Test 2 to Test 1.
+- Result: Android media volume remains 9/15 and DualBT is still the focused foreground app, so Test 1 can be run with the same controlled setup.
+2026-05-25 09:46:28 IST - Run v0.2.33 Test 1 At Android Volume 9/15
+- Action: Cleared logcat, tapped DualBT's Test 1 button from the verified foreground UI, waited eight seconds, and captured app logs plus Android audio routing and volume state.
+- Result: Android switched active A2DP to Mini boost 1 address `41:42:26:B3:62:1C`, but DualBT blocked the calibration because no direct matching public output route was exposed and Android media volume read 0/15 afterward; created `docs/problems/2026-05-25-test1-blocked-after-a2dp-switch-v0233.md`.
+2026-05-25 09:48:45 IST - Capture Test 1 YouTube Route Confirmation
+- Action: Asked the user whether any physical speaker beeped after the blocked Test 1 run.
+- Result: User reported the app beep did not play, but YouTube audio now routes to Mini boost 1 at Android media volume 9/15; this supports changing Test 1 to use default media playback after an accepted A2DP handoff instead of blocking on missing public route metadata.
+2026-05-25 09:49:39 IST - Choose Test 1 A2DP Handoff Strategy
+- Action: Compared route-fix options after Test 1 switched YouTube to Mini boost 1 but blocked the app beep.
+- Result: Selected the targeted planner change: after an attempted A2DP handoff and stale public route metadata, DualBT should use default media playback rather than SCO fallback or blocking; longer route waits and privileged active-device APIs were rejected as less reliable for a normal Android app.
+2026-05-25 09:50:23 IST - Add Failing Test For Attempted A2DP Handoff
+- Action: Updated `SpeakerCalibrationRoutePlannerTest` to require default media playback when an A2DP handoff was attempted but the platform reported failure and public route metadata stayed stale.
+- Result: Focused compile failed as expected because `SpeakerCalibrationRoutePlanner.plan` does not yet accept separate attempted/accepted A2DP handoff inputs.
+2026-05-25 09:51:01 IST - Implement Attempted A2DP Default-Media Fallback
+- Action: Updated `SpeakerCalibrationRoutePlanner` and `SpeakerCalibrationPlayer` so an attempted A2DP handoff can use default media playback when the direct public output route is stale.
+- Result: Focused `SpeakerCalibrationRoutePlannerTest` compiles and runs with exit code 0.
+2026-05-25 09:51:29 IST - Bump v0.2.34 For Test 1 A2DP Fallback
+- Action: Updated Android version metadata to versionName `0.2.34`/versionCode `35` and added a changelog entry for attempted-A2DP default media calibration fallback.
+- Result: Version metadata and changelog are ready for full test/build/install verification.
+2026-05-25 09:51:53 IST - Run Full Plain Java Tests For v0.2.34
+- Action: Compiled and ran every `app/src/test/java/**/*Test.java` main with the attempted-A2DP default-media fallback changes.
+- Result: Full plain Java test suite exited with code 0.
+2026-05-25 09:53:14 IST - Build v0.2.34 APK
+- Action: Ran the offline Android debug build with the local SDK, offline Maven cache, patched Gradle Java options, and debug keystore.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 56s and produced `app/build/outputs/apk/debug/app-debug.apk`.
+2026-05-25 09:53:53 IST - Install v0.2.34 And Prepare Loud Test 1
+- Action: Installed the v0.2.34 debug APK, force-stopped YouTube, launched DualBT, set Android media volume to 9/15, verified versionName `0.2.34`/versionCode `35`, and dumped the UI.
+- Result: DualBT is foreground with Ready to stream, 2/2 selected, enabled Test 1/Test 2 controls, and 100% in-app gain for the user's requested louder Test 1 verification.
+2026-05-25 09:54:24 IST - Run v0.2.34 Test 1 At Loud Volume
+- Action: Cleared logcat, tapped DualBT's Test 1 button with Android media volume 9/15 and in-app gain 100%, waited eight seconds, and captured app logs plus Android audio routing and volume state.
+- Result: v0.2.34 no longer blocks or enters SCO fallback; it requested audio focus, used `media-default-after-a2dp-activation`, wrote and drained 614400 bytes of calibration PCM, and Android media volume remained 9/15; physical speaker confirmation is required.
+2026-05-25 09:55:01 IST - Confirm Test 1 Physical Output On v0.2.34
+- Action: Asked the user which physical speaker produced the v0.2.34 Test 1 beep.
+- Result: User confirmed `Mini boost 1`; created `docs/solutions/test1-blocked-after-a2dp-switch-v0233.md`.
+2026-05-25 09:55:37 IST - Verify Test 2 Retest Setup After Test 1
+- Action: Checked Android media volume and foreground focus after the successful Test 1 run.
+- Result: Android media volume remains 9/15 and DualBT is still the focused foreground app, so Test 2 can be rerun to verify route switching back to Mini boost 2.
+2026-05-25 09:56:05 IST - Run v0.2.34 Test 2 After Test 1
+- Action: Cleared logcat, tapped DualBT's Test 2 button after the verified Test 1 route, waited eight seconds, and captured app logs plus Android audio routing and volume state.
+- Result: Android switched active A2DP to Mini boost 2 address `41:42:2E:9E:5E:AE`, DualBT requested audio focus, unmuted media, wrote and drained 614400 bytes of calibration PCM, and Android media volume remained 9/15; physical speaker confirmation is required.
+2026-05-25 09:56:28 IST - Confirm Test 2 Physical Output After Test 1
+- Action: Asked the user which physical speaker produced the v0.2.34 Test 2 beep after the successful Test 1 run.
+- Result: User confirmed `Mini boost 2`; both calibration buttons now produce sound on their intended physical speakers at Android media volume 9/15.
+2026-05-25 09:57:22 IST - Locate Streaming Control For Music Test
+- Action: Inspected the streaming implementation and scrolled the DualBT UI to expose the `Start Stream` button after the selected Mini boost 1 and Mini boost 2 cards.
+- Result: UIAutomator shows both Mini Boost devices selected and the `Start Stream` control visible/enabled near the bottom of the screen.
+2026-05-25 09:57:47 IST - Request MediaProjection For Streaming Test
+- Action: Tapped `Start Stream` and dumped the Android permission UI.
+- Result: Android shows the `Start recording or casting with DualBT?` dialog with `Cancel` and `Start now`; DualBT logged that capture permission is required and requested MediaProjection permission.
+2026-05-25 09:58:37 IST - Log Streaming Hybrid SCO Phone-Route Failure
+- Action: Accepted the MediaProjection prompt, captured DualBT service logs, Android service state, and audio routing after the stream started.
+- Result: The streaming service and playback capture started, but Mini boost 1 was assigned to a `communication-sco` track routed to `Redmi Note 9 Pro`; created `docs/problems/2026-05-25-streaming-hybrid-sco-uses-phone-route-v0234.md`.
+2026-05-25 10:00:01 IST - Stop Faulty Streaming Service For Router Patch
+- Action: Tried to stop the running foreground streaming service with `am stopservice`, logged the failure, then force-stopped the DualBT package and verified no service remained.
+- Result: Created `docs/problems/2026-05-25-adb-stopservice-stream-failed.md` and `docs/solutions/adb-stopservice-stream-failed.md`; DualBT service state now shows `(nothing)`.
+2026-05-25 10:01:13 IST - Add Failing Hybrid Planner Test For Generic SCO
+- Action: Updated `HybridBluetoothSplitPlannerTest` to distinguish a matched selected-speaker SCO route from the generic phone SCO route observed during streaming.
+- Result: Focused test failed as expected because the planner does not yet support the matched-SCO shape and still needs to reject generic phone SCO.
+2026-05-25 10:01:58 IST - Reject Generic Phone SCO In Streaming Router
+- Action: Updated `HybridBluetoothSplitPlanner` to require one matched A2DP route and one matched SCO route, and updated `AndroidAudioOutputRouter` so communication-device selection no longer falls back to the first generic phone SCO device.
+- Result: Focused `HybridBluetoothSplitPlannerTest` compiles and runs with exit code 0.
+2026-05-25 10:03:04 IST - Add Failing Active A2DP Handoff Policy Test
+- Action: Added `ActiveA2dpHandoffPolicyTest` to require default media playback after an attempted A2DP handoff when public route metadata is stale.
+- Result: Focused compile failed as expected because `ActiveA2dpHandoffPolicy` does not exist yet.
+2026-05-25 10:04:03 IST - Use Default Media For Stale Active A2DP Streaming Routes
+- Action: Added `ActiveA2dpHandoffPolicy` and updated `AndroidAudioOutputRouter` so active A2DP streaming can start a default-media track after an attempted handoff instead of pinning to stale `AudioDeviceInfo`.
+- Result: Focused `ActiveA2dpHandoffPolicyTest` and `HybridBluetoothSplitPlannerTest` compile and run with exit code 0.
+2026-05-25 10:04:34 IST - Bump v0.2.35 For Streaming Route Guard
+- Action: Updated Android version metadata to versionName `0.2.35`/versionCode `36` and added a changelog entry for rejecting generic phone SCO in streaming plus default-media active A2DP fallback.
+- Result: Version metadata and changelog are ready for full test/build/install verification.
+2026-05-25 10:04:58 IST - Run Full Plain Java Tests For v0.2.35
+- Action: Compiled and ran every `app/src/test/java/**/*Test.java` main with the streaming route guard changes.
+- Result: Full plain Java test suite exited with code 0.
+2026-05-25 10:06:20 IST - Build v0.2.35 APK
+- Action: Ran the offline Android debug build with the local SDK, offline Maven cache, patched Gradle Java options, and debug keystore.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 54s and produced `app/build/outputs/apk/debug/app-debug.apk`.
+2026-05-25 10:06:48 IST - Install v0.2.35 And Prepare Streaming Retest
+- Action: Installed the v0.2.35 debug APK, force-stopped YouTube, launched DualBT, set Android media volume to 9/15, and verified versionName `0.2.35`/versionCode `36`.
+- Result: DualBT is foreground and ready for the streaming route retest.
+2026-05-25 10:09:18 IST - Diagnose YouTube Audio On Test 2 Before Consent
+- Action: Captured DualBT logs, Android audio routing, and a UI dump after the user reported YouTube music playing on the Test 2 speaker.
+- Result: The Android MediaProjection `Start now` prompt was still open and DualBT had not logged capture startup for v0.2.35; Android's active A2DP route was Mini boost 2, so this was logged as `docs/problems/2026-05-25-youtube-audio-on-test2-before-stream-consent.md` before continuing the stream test.
+2026-05-25 10:10:45 IST - Start v0.2.35 Stream And Inspect Output Routes
+- Action: Accepted the MediaProjection `Start now` prompt, captured UI state, DualBT logs, foreground service state, Android audio routing, and media-session state.
+- Result: v0.2.35 fixed the previous phone/SCO route issue and `docs/solutions/streaming-hybrid-sco-uses-phone-route-v0234.md` was created, but Android still routed both DualBT media tracks to one A2DP device; logged the remaining repeated one-speaker failure as `docs/problems/2026-05-25-v0235-dual-tracks-one-a2dp-route.md`.
+2026-05-25 10:12:59 IST - Research Repeated One-Speaker A2DP Failure
+- Action: Researched Android multi-device Bluetooth routing options and inspected the live device for MIUI/Qualcomm audio-sharing properties, settings, packages, and Bluetooth manager capabilities.
+- Result: Android exposed one active public A2DP route for the selected classic speakers, `BluetoothA2dp#setActiveDevice` remained privileged, and the device showed MIUI audio-share settings plus a Xiaomi audio relay activity that needed live probing.
+2026-05-25 10:15:03 IST - Probe Xiaomi Audio Relay Picker
+- Action: Launched `miui.bluetooth.mible.MiuiAudioRelayActivity`, selected the other Mini Boost entry, accepted the picker, and captured UI, settings, app logs, and Android audio routing.
+- Result: The picker switched the single active A2DP route from Mini boost 2 to Mini boost 1, but DualBT's two tracks still shared one device route; this rules out the Xiaomi audio relay picker as a true simultaneous dual-output path for the current classic Bluetooth speakers.
+2026-05-25 10:18:12 IST - Add Failing Streaming Capability Policy Test
+- Action: Added `StreamingRouteCapabilityPolicyTest` requiring active A2DP handoff to be rejected for simultaneous streaming while allowing two direct media routes or a matched hybrid split.
+- Result: The focused test is ready to fail because `StreamingRouteCapabilityPolicy` has not been implemented yet.
+2026-05-25 10:18:49 IST - Verify Failing Streaming Capability Policy Test
+- Action: Ran the focused `StreamingRouteCapabilityPolicyTest` compile before implementing the policy.
+- Result: Compilation failed with 12 expected missing-symbol errors because `StreamingRouteCapabilityPolicy` did not exist yet.
+2026-05-25 10:20:03 IST - Implement Streaming Capability Gate
+- Action: Added `StreamingRouteCapabilityPolicy`, wired it into route availability and the streaming output router, rejected active A2DP handoff for simultaneous streaming, and added a system audio output picker button.
+- Result: Focused `StreamingRouteCapabilityPolicyTest` compiles and runs with exit code 0.
+2026-05-25 10:20:42 IST - Bump v0.2.36 For Streaming Capability Gate
+- Action: Updated Android version metadata to versionName `0.2.36`/versionCode `37` and added a changelog entry for blocking false dual streams plus opening the system output picker.
+- Result: Version metadata and changelog are ready for full test/build/install verification.
+2026-05-25 10:21:18 IST - Run Full Plain Java Tests For v0.2.36
+- Action: Compiled and ran every `app/src/test/java/**/*Test.java` main with the streaming capability gate changes.
+- Result: Full plain Java test suite exited with code 0.
+2026-05-25 10:22:01 IST - Build v0.2.36 APK
+- Action: Ran the offline Android debug build with the local SDK, offline Maven cache, patched Gradle Java options, and debug keystore.
+- Result: Build failed in `:app:compileDebugJavaWithJavac` with `AndroidAudioOutputRouter.java:525: error: class, interface, enum, or record expected`; created `docs/problems/2026-05-25-v0236-router-syntax-after-active-handoff-removal.md`.
+2026-05-25 10:23:04 IST - Fix Router Syntax Error And Rebuild
+- Action: Removed the dangling `ActivatedOutput.blocked()` fragment from `AndroidAudioOutputRouter` and reran the offline Android debug build.
+- Result: The router syntax error was cleared, but build failed with `AndroidAudioRouteAvailability.Result` constructor mismatches; created `docs/problems/2026-05-25-v0236-route-availability-result-constructor-mismatch.md`.
+2026-05-25 10:24:08 IST - Fix Route Availability Constructor Mismatch And Rebuild
+- Action: Added compact status messages to the invalid-context `AndroidAudioRouteAvailability.Result` early returns and reran the offline Android debug build.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 38s, produced `app/build/outputs/apk/debug/app-debug.apk`, and created solution notes for the two v0.2.36 build failures.
+2026-05-25 10:26:30 IST - Install And Verify v0.2.36 Route Gate
+- Action: Force-stopped DualBT, installed the v0.2.36 APK, set Android media volume to `2/15`, launched the app, verified versionName `0.2.36`/versionCode `37`, tapped `Start Stream`, and captured UI, logs, and service state.
+- Result: DualBT blocked before MediaProjection with `Android exposes one active A2DP route at a time`, no foreground service was running, and the UI showed `Dual route unavailable: 1/2 live routes`.
+2026-05-25 10:27:22 IST - Verify v0.2.36 Output Picker Action
+- Action: Tapped the new `Output` control from DualBT, captured the launched picker UI, and returned to DualBT.
+- Result: The app opened Xiaomi's `Select device` audio relay picker and returned to `com.xpwnit.dualbt/.MainActivity`; created `docs/solutions/v0235-dual-tracks-one-a2dp-route.md` with the researched fix options and selected route-gate implementation.
+2026-05-25 10:26:24 IST - Confirm Final v0.2.36 Plain Java Tests
+- Action: Polled the pending full plain Java test session after compaction.
+- Result: The session exited with code 0, confirming the full `app/src/test/java/**/*Test.java` main-class suite completed successfully after the v0.2.36 route-gate implementation.

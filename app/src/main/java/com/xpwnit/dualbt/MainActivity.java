@@ -4,7 +4,9 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.content.res.Configuration;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -16,6 +18,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -31,6 +34,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import com.xpwnit.dualbt.audio.AndroidAudioRouteAvailability;
+import com.xpwnit.dualbt.audio.OutputVolumeMapper;
 import com.xpwnit.dualbt.audio.SpeakerCalibrationPlayer;
 import com.xpwnit.dualbt.bt.AndroidBluetoothScanner;
 import com.xpwnit.dualbt.logging.AppLogger;
@@ -39,6 +43,7 @@ import com.xpwnit.dualbt.service.DualBTService;
 import com.xpwnit.dualbt.state.StreamDevice;
 import com.xpwnit.dualbt.state.StreamRoutePlan;
 import com.xpwnit.dualbt.state.StreamSessionController;
+import com.xpwnit.dualbt.state.StreamSessionStateCodec;
 import com.xpwnit.dualbt.ui.SystemBarAppearancePolicy;
 
 import java.util.ArrayList;
@@ -47,10 +52,14 @@ import java.util.List;
 public final class MainActivity extends Activity implements AppLogger.Listener {
     private static final int REQUIRED_SPEAKERS = 2;
     private static final int REQUEST_MEDIA_PROJECTION = 41;
+    private static final String SESSION_PREFS = "dualbt_session";
+    private static final String PREF_SELECTED_ADDRESSES = "selected_addresses";
+    private static final String PREF_OUTPUT_VOLUME_PERCENT = "output_volume_percent";
     private final ArrayList<StreamDevice> devices = new ArrayList<>();
     private final StreamSessionController streamSession = new StreamSessionController(REQUIRED_SPEAKERS);
     private final AndroidBluetoothScanner bluetoothScanner = new AndroidBluetoothScanner();
 
+    private SharedPreferences sessionPreferences;
     private SpeakerCalibrationPlayer calibrationPlayer;
     private FrameLayout root;
     private LinearLayout deviceList;
@@ -59,6 +68,7 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
     private TextView streamButton;
     private TextView modeBadge;
     private TextView volumeBadge;
+    private TextView outputPickerButton;
     private TextView testOneButton;
     private TextView testTwoButton;
     private OrbBackgroundView backgroundView;
@@ -76,6 +86,10 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
         super.onCreate(savedInstanceState);
         dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                 == Configuration.UI_MODE_NIGHT_YES;
+        sessionPreferences = getSharedPreferences(SESSION_PREFS, MODE_PRIVATE);
+        outputVolumePercent = OutputVolumeMapper.clampManualPercent(
+                sessionPreferences.getInt(PREF_OUTPUT_VOLUME_PERCENT, 100)
+        );
         projectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
         calibrationPlayer = new SpeakerCalibrationPlayer(this);
         configureWindow();
@@ -164,7 +178,43 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
         AndroidBluetoothScanner.ScanResult scanResult = bluetoothScanner.scan(this, true);
         devices.addAll(scanResult.devices);
         emulatorMode = scanResult.mockFallback;
+        restoreSelectedDevicesFromPreferences(reason);
         AppLogger.d("MainViewModel", "Devices updated: " + devices.size() + ", emulator=" + emulatorMode + ", reason=" + reason);
+    }
+
+    private void restoreSelectedDevicesFromPreferences(String reason) {
+        if (sessionPreferences == null || streamSession.isStreaming() || streamSession.isAwaitingCapturePermission()) {
+            return;
+        }
+        List<String> savedAddresses = StreamSessionStateCodec.decodeSelectedAddresses(
+                sessionPreferences.getString(PREF_SELECTED_ADDRESSES, "")
+        );
+        if (savedAddresses.isEmpty()) {
+            return;
+        }
+        ArrayList<StreamDevice> restoredDevices = new ArrayList<>();
+        for (String address : savedAddresses) {
+            StreamDevice device = findDeviceByAddress(address);
+            if (device != null) {
+                restoredDevices.add(device);
+            }
+        }
+        if (streamSession.restoreSelected(restoredDevices)) {
+            AppLogger.i(
+                    "MainViewModel",
+                    "Restored " + streamSession.selectedCount() + "/" + REQUIRED_SPEAKERS
+                            + " selected speaker(s) after " + reason
+            );
+        }
+    }
+
+    private StreamDevice findDeviceByAddress(String address) {
+        for (StreamDevice device : devices) {
+            if (device.address.equals(address)) {
+                return device;
+            }
+        }
+        return null;
     }
 
     private void buildUi() {
@@ -279,6 +329,11 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
         TextView up = iconButton("Volume +");
         up.setOnClickListener(v -> adjustOutputVolume(10));
         card.addView(up);
+        card.addView(spaceHorizontal(10));
+
+        outputPickerButton = iconButton("Output");
+        outputPickerButton.setOnClickListener(v -> openSystemAudioOutputPicker());
+        card.addView(outputPickerButton);
         return card;
     }
 
@@ -414,7 +469,22 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
         } else {
             AppLogger.w("MainViewModel", "Selection limit reached: exactly 2 speakers supported");
         }
+        if (changed) {
+            persistSelectedDevices();
+        }
         render();
+    }
+
+    private void persistSelectedDevices() {
+        if (sessionPreferences == null) {
+            return;
+        }
+        sessionPreferences.edit()
+                .putString(
+                        PREF_SELECTED_ADDRESSES,
+                        StreamSessionStateCodec.encodeSelectedAddresses(streamSession.selectedDevices())
+                )
+                .apply();
     }
 
     private void playCalibrationTone(StreamDevice device, int selectedNumber) {
@@ -450,9 +520,19 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
             return;
         }
         outputVolumePercent = next;
+        persistOutputVolume();
         AppLogger.i("MainViewModel", "Output volume changed to " + outputVolumePercent + "%");
         sendOutputVolumeToService();
         render();
+    }
+
+    private void persistOutputVolume() {
+        if (sessionPreferences == null) {
+            return;
+        }
+        sessionPreferences.edit()
+                .putInt(PREF_OUTPUT_VOLUME_PERCENT, outputVolumePercent)
+                .apply();
     }
 
     private void sendOutputVolumeToService() {
@@ -478,7 +558,7 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
             StreamRoutePlan routePlan = StreamRoutePlan.fromSelected(streamSession.selectedDevices(), REQUIRED_SPEAKERS);
             AndroidAudioRouteAvailability.Result availability = AndroidAudioRouteAvailability.check(this, routePlan);
             if (!availability.supported) {
-                statusOverride = "Only " + availability.directMediaRoutes + "/2 speaker routes available";
+                statusOverride = availability.statusMessage;
                 AppLogger.w("MainViewModel", "Start blocked: " + availability.message);
                 render();
                 return;
@@ -533,7 +613,7 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
             AndroidAudioRouteAvailability.Result availability = AndroidAudioRouteAvailability.check(this, routePlan);
             if (!availability.supported) {
                 streamSession.cancelCapturePermission();
-                statusOverride = "Only " + availability.directMediaRoutes + "/2 speaker routes available";
+                statusOverride = availability.statusMessage;
                 AppLogger.w("MainViewModel", "Capture permission accepted but start blocked: " + availability.message);
                 render();
                 return;
@@ -566,6 +646,35 @@ public final class MainActivity extends Activity implements AppLogger.Listener {
             startService(serviceIntent);
         }
         AppLogger.i("MainActivity", "Foreground service start requested after capture consent");
+    }
+
+    private void openSystemAudioOutputPicker() {
+        Intent miuiAudioRelay = new Intent("miui.bluetooth.mible.MiuiAudioRelayActivity");
+        miuiAudioRelay.addCategory(Intent.CATEGORY_DEFAULT);
+        if (canResolve(miuiAudioRelay)) {
+            AppLogger.i("MainActivity", "Opening Xiaomi audio output picker");
+            startActivity(miuiAudioRelay);
+            return;
+        }
+        Intent bluetoothSettings = new Intent(Settings.ACTION_BLUETOOTH_SETTINGS);
+        if (canResolve(bluetoothSettings)) {
+            AppLogger.i("MainActivity", "Opening Android Bluetooth settings for audio output selection");
+            startActivity(bluetoothSettings);
+            return;
+        }
+        AppLogger.w("MainActivity", "No system audio output picker is available");
+    }
+
+    private boolean canResolve(Intent intent) {
+        if (intent == null) {
+            return false;
+        }
+        PackageManager packageManager = getPackageManager();
+        if (packageManager == null) {
+            return false;
+        }
+        ResolveInfo resolved = packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY);
+        return resolved != null;
     }
 
     private void showLogs() {

@@ -16,23 +16,26 @@ public final class AndroidAudioRouteAvailability {
 
     public static Result check(Context context, StreamRoutePlan routePlan) {
         if (context == null) {
-            return new Result(false, 0, "Android audio context is unavailable");
+            return new Result(false, 0, "Android audio context is unavailable", "Audio context unavailable");
         }
         if (routePlan == null || routePlan.targetCount() != 2) {
-            return new Result(false, 0, "Route plan must contain exactly 2 speakers");
+            return new Result(false, 0, "Route plan must contain exactly 2 speakers", "Select 2 speakers");
         }
         AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
         if (audioManager == null) {
-            return new Result(false, 0, "Android AudioManager is unavailable");
+            return new Result(false, 0, "Android AudioManager is unavailable", "Audio routing unavailable");
         }
         List<AudioOutputRouteMatcher.OutputDeviceDescriptor> outputs = bluetoothOutputDescriptors(audioManager);
         List<Integer> matches = AudioOutputRouteMatcher.match(routePlan.targets(), outputs);
         int directRoutes = AudioOutputRouteSupport.directMediaRouteCount(matches, outputs);
-        boolean supported = directRoutes >= 2;
-        String message = supported
-                ? "Android exposes 2/2 direct media routes"
-                : "Android exposes " + directRoutes + "/2 direct media route(s). Generic SCO fallback is disabled.";
-        return new Result(supported, directRoutes, message);
+        AudioOutputModePlanner.Plan outputPlan = AudioOutputModePlanner.plan(matches, outputs);
+        HybridBluetoothSplitPlanner.Plan hybridPlan = HybridBluetoothSplitPlanner.plan(matches, outputs);
+        StreamingRouteCapabilityPolicy.Result capability = StreamingRouteCapabilityPolicy.evaluate(
+                directRoutes,
+                hybridPlan.useHybridSplit,
+                outputPlan.useActiveA2dpHandoff
+        );
+        return new Result(capability.supported, directRoutes, capability.message, capability.statusMessage);
     }
 
     private static List<AudioOutputRouteMatcher.OutputDeviceDescriptor> bluetoothOutputDescriptors(AudioManager audioManager) {
@@ -71,11 +74,13 @@ public final class AndroidAudioRouteAvailability {
         public final boolean supported;
         public final int directMediaRoutes;
         public final String message;
+        public final String statusMessage;
 
-        Result(boolean supported, int directMediaRoutes, String message) {
+        Result(boolean supported, int directMediaRoutes, String message, String statusMessage) {
             this.supported = supported;
             this.directMediaRoutes = directMediaRoutes;
             this.message = message;
+            this.statusMessage = statusMessage;
         }
     }
 }

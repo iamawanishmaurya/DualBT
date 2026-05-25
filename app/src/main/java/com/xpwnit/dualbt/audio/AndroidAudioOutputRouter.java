@@ -13,12 +13,20 @@ import com.xpwnit.dualbt.state.StreamDevice;
 import com.xpwnit.dualbt.state.StreamRoutePlan;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public final class AndroidAudioOutputRouter {
+    private static final int SCO_SAMPLE_RATE = 16_000;
+
     private final Context context;
+    private final BluetoothA2dpRouteActivator routeActivator;
+    private final BluetoothHeadsetRouteActivator headsetRouteActivator;
     private final ArrayList<AudioTrack> tracks = new ArrayList<>();
     private final ArrayList<String> trackRoutes = new ArrayList<>();
+    private final ArrayList<Boolean> communicationTracks = new ArrayList<>();
+    private final ArrayList<Pcm16ScoConverter> scoConverters = new ArrayList<>();
+    private final ArrayList<byte[]> scoBuffers = new ArrayList<>();
     private AudioManager activeAudioManager;
     private boolean communicationFallbackActive;
     private int previousAudioMode = AudioManager.MODE_NORMAL;
@@ -26,6 +34,8 @@ public final class AndroidAudioOutputRouter {
 
     public AndroidAudioOutputRouter(Context context) {
         this.context = context.getApplicationContext();
+        this.routeActivator = new BluetoothA2dpRouteActivator(this.context);
+        this.headsetRouteActivator = new BluetoothHeadsetRouteActivator(this.context);
     }
 
     public synchronized boolean start(AudioCaptureSpec spec, StreamRoutePlan routePlan) {
@@ -42,19 +52,41 @@ public final class AndroidAudioOutputRouter {
         List<OutputBinding> outputs = bluetoothOutputs(audioManager);
         List<AudioOutputRouteMatcher.OutputDeviceDescriptor> descriptors = descriptors(outputs);
         List<Integer> matches = AudioOutputRouteMatcher.match(routePlan.targets(), descriptors);
-        if (!AudioOutputRouteSupport.hasTwoDirectMediaRoutes(matches, descriptors)) {
-            AppLogger.w(
-                    "AudioOutputRouter",
-                    "Dual Bluetooth output blocked: Android exposes "
-                            + AudioOutputRouteSupport.directMediaRouteCount(matches, descriptors)
-                            + "/2 direct media route(s). Generic SCO fallback is disabled because it can route both tracks to the same speaker."
-            );
+        AudioOutputModePlanner.Plan outputPlan = AudioOutputModePlanner.plan(matches, descriptors);
+        HybridBluetoothSplitPlanner.Plan hybridPlan = HybridBluetoothSplitPlanner.plan(matches, descriptors);
+        boolean hasTwoDirectRoutes = AudioOutputRouteSupport.hasTwoDirectMediaRoutes(matches, descriptors);
+        boolean hybridScoSplit = !hasTwoDirectRoutes && hybridPlan.useHybridSplit;
+        boolean activeA2dpHandoff = !hasTwoDirectRoutes && !hybridScoSplit && outputPlan.useActiveA2dpHandoff;
+        StreamingRouteCapabilityPolicy.Result capability = StreamingRouteCapabilityPolicy.evaluate(
+                AudioOutputRouteSupport.directMediaRouteCount(matches, descriptors),
+                hybridScoSplit,
+                activeA2dpHandoff
+        );
+        if (!capability.supported) {
+            AppLogger.w("AudioOutputRouter", "Dual Bluetooth output blocked: " + capability.message);
             return false;
         }
-        AudioOutputModePlanner.Plan outputPlan = AudioOutputModePlanner.plan(matches, descriptors);
+        if (hybridScoSplit) {
+            AppLogger.w(
+                    "AudioOutputRouter",
+                    "Using experimental hybrid Bluetooth split: one A2DP media route plus targeted Headset/SCO for "
+                            + routePlan.targets().get(hybridPlan.scoRouteIndex).name
+            );
+        }
         AudioDeviceInfo communicationDevice = null;
         if (outputPlan.useCommunicationFallback) {
-            communicationDevice = startCommunicationFallback(audioManager, routePlan.targets().get(outputPlan.communicationRouteIndex));
+            communicationDevice = startCommunicationFallback(audioManager, routePlan.targets().get(outputPlan.communicationRouteIndex), false);
+        } else if (hybridScoSplit) {
+            communicationDevice = startCommunicationFallback(audioManager, routePlan.targets().get(hybridPlan.scoRouteIndex), true);
+            if (communicationDevice == null) {
+                AppLogger.w(
+                        "AudioOutputRouter",
+                        "Hybrid Bluetooth split could not prepare Headset/SCO route for "
+                                + routePlan.targets().get(hybridPlan.scoRouteIndex).name
+                );
+                stop();
+                return false;
+            }
         }
         int matchedOutputCount = matchedOutputCount(matches);
         if (matchedOutputCount < routePlan.targetCount()) {
@@ -77,13 +109,28 @@ public final class AndroidAudioOutputRouter {
         int routeIndex = 0;
         for (StreamDevice route : routePlan.targets()) {
             OutputBinding output = outputFor(matches, outputs, routeIndex);
-            boolean communicationTrack = outputPlan.useCommunicationFallback
-                    && routeIndex == outputPlan.communicationRouteIndex
+            boolean communicationTrack = ((outputPlan.useCommunicationFallback
+                    && routeIndex == outputPlan.communicationRouteIndex)
+                    || (hybridScoSplit && routeIndex == hybridPlan.scoRouteIndex))
                     && communicationDevice != null;
             if (communicationTrack) {
                 output = new OutputBinding(communicationDevice);
             }
-            AudioTrack track = buildTrack(spec, bufferBytes, communicationTrack);
+            int routeBufferBytes = bufferBytes;
+            if (communicationTrack) {
+                int scoMinBufferBytes = AudioTrack.getMinBufferSize(
+                        SCO_SAMPLE_RATE,
+                        AudioFormat.CHANNEL_OUT_MONO,
+                        AudioFormat.ENCODING_PCM_16BIT
+                );
+                if (scoMinBufferBytes <= 0) {
+                    AppLogger.w("AudioOutputRouter", "SCO AudioTrack minimum buffer unavailable: " + scoMinBufferBytes);
+                    stop();
+                    return false;
+                }
+                routeBufferBytes = Math.max(scoMinBufferBytes * 4, 4096);
+            }
+            AudioTrack track = buildTrack(spec, routeBufferBytes, communicationTrack);
             if (track.getState() != AudioTrack.STATE_INITIALIZED) {
                 track.release();
                 AppLogger.w("AudioOutputRouter", "AudioTrack was not initialized for " + route.name);
@@ -94,6 +141,9 @@ public final class AndroidAudioOutputRouter {
             track.play();
             tracks.add(track);
             trackRoutes.add(route.name);
+            communicationTracks.add(communicationTrack);
+            scoConverters.add(communicationTrack ? new Pcm16ScoConverter(spec.sampleRate(), SCO_SAMPLE_RATE) : null);
+            scoBuffers.add(null);
             AppLogger.i(
                     "AudioOutputRouter",
                     "Track " + routeIndex + " started for " + route.name
@@ -145,28 +195,55 @@ public final class AndroidAudioOutputRouter {
         }
         tracks.clear();
         trackRoutes.clear();
+        communicationTracks.clear();
+        scoConverters.clear();
+        scoBuffers.clear();
         stopCommunicationFallback();
     }
 
     private void writeTrack(int index, byte[] data, int bytes) {
         AudioTrack track = tracks.get(index);
-        int written = track.write(data, 0, bytes);
+        int written;
+        if (Boolean.TRUE.equals(communicationTracks.get(index))) {
+            Pcm16ScoConverter converter = scoConverters.get(index);
+            if (converter == null) {
+                AppLogger.w("AudioOutputRouter", "Track " + index + " has no SCO converter");
+                return;
+            }
+            int capacity = converter.outputCapacityBytes(bytes);
+            byte[] buffer = scoBuffers.get(index);
+            if (buffer == null || buffer.length < capacity) {
+                buffer = new byte[capacity];
+                scoBuffers.set(index, buffer);
+            }
+            int convertedBytes = converter.convert(data, bytes, buffer);
+            if (convertedBytes <= 0) {
+                return;
+            }
+            written = track.write(buffer, 0, convertedBytes);
+        } else {
+            written = track.write(data, 0, bytes);
+        }
         if (written < 0) {
             AppLogger.w("AudioOutputRouter", "Track " + index + " write returned " + written);
         }
     }
 
     private AudioTrack buildTrack(AudioCaptureSpec spec, int bufferBytes, boolean communicationTrack) {
-        AudioAttributes.Builder attributes = new AudioAttributes.Builder()
-                .setUsage(communicationTrack ? AudioAttributes.USAGE_VOICE_COMMUNICATION : AudioAttributes.USAGE_MEDIA)
-                .setContentType(communicationTrack ? AudioAttributes.CONTENT_TYPE_SPEECH : AudioAttributes.CONTENT_TYPE_MUSIC);
+        AudioAttributes.Builder attributes = new AudioAttributes.Builder();
+        if (communicationTrack) {
+            attributes.setLegacyStreamType(AudioManager.STREAM_VOICE_CALL);
+        } else {
+            attributes.setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC);
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             attributes.setAllowedCapturePolicy(AudioAttributes.ALLOW_CAPTURE_BY_NONE);
         }
         AudioFormat format = new AudioFormat.Builder()
                 .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                .setSampleRate(spec.sampleRate())
-                .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
+                .setSampleRate(communicationTrack ? SCO_SAMPLE_RATE : spec.sampleRate())
+                .setChannelMask(communicationTrack ? AudioFormat.CHANNEL_OUT_MONO : AudioFormat.CHANNEL_OUT_STEREO)
                 .build();
         return new AudioTrack.Builder()
                 .setAudioAttributes(attributes.build())
@@ -176,7 +253,23 @@ public final class AndroidAudioOutputRouter {
                 .build();
     }
 
-    private AudioDeviceInfo startCommunicationFallback(AudioManager audioManager, StreamDevice route) {
+    private AudioDeviceInfo startCommunicationFallback(AudioManager audioManager, StreamDevice route, boolean requireTargetedActivation) {
+        BluetoothHeadsetRouteActivator.Result activation = headsetRouteActivator.activate(route, 350L);
+        if (activation.attempted) {
+            AppLogger.i(
+                    "AudioOutputRouter",
+                    "Headset/SCO route activation for " + route.name + ": " + activation.message
+            );
+        } else {
+            AppLogger.d(
+                    "AudioOutputRouter",
+                    "Headset/SCO route activation skipped for " + route.name + ": " + activation.message
+            );
+        }
+        if (requireTargetedActivation && !activation.accepted) {
+            AppLogger.w("AudioOutputRouter", "Targeted Headset/SCO route was not accepted for " + route.name);
+            return null;
+        }
         AudioDeviceInfo device = firstBluetoothScoOutput(audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS));
         if (device == null) {
             AppLogger.w("AudioOutputRouter", "Communication fallback requested but no Bluetooth SCO output is exposed");
@@ -205,8 +298,20 @@ public final class AndroidAudioOutputRouter {
         communicationFallbackActive = communicationDeviceSet;
         if (!communicationDeviceSet) {
             AppLogger.w("AudioOutputRouter", "Communication fallback could not set a communication device");
+            return null;
+        } else {
+            waitForCommunicationRoute();
         }
         return device;
+    }
+
+    private void waitForCommunicationRoute() {
+        try {
+            Thread.sleep(850L);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            AppLogger.w("AudioOutputRouter", "Communication route settle interrupted");
+        }
     }
 
     private void stopCommunicationFallback() {
@@ -232,20 +337,16 @@ public final class AndroidAudioOutputRouter {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             return null;
         }
-        AudioDeviceInfo fallback = null;
         for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
             if (!isBluetoothSco(device)) {
                 continue;
             }
             AppLogger.d("AudioOutputRouter", "Communication device: " + describe(device));
-            if (fallback == null) {
-                fallback = device;
-            }
             if (matchesRoute(route, device)) {
                 return device;
             }
         }
-        return fallback;
+        return null;
     }
 
     private AudioDeviceInfo firstBluetoothScoOutput(AudioDeviceInfo[] devices) {
@@ -269,6 +370,31 @@ public final class AndroidAudioOutputRouter {
             }
         }
         return outputs;
+    }
+
+    private OutputBinding matchingOutput(StreamDevice route, List<OutputBinding> outputs) {
+        List<Integer> routeMatches = AudioOutputRouteMatcher.match(
+                Collections.singletonList(route),
+                descriptors(outputs)
+        );
+        if (routeMatches.isEmpty() || routeMatches.get(0) < 0 || routeMatches.get(0) >= outputs.size()) {
+            return null;
+        }
+        AudioOutputRouteMatcher.OutputDeviceDescriptor descriptor = descriptors(outputs).get(routeMatches.get(0));
+        if (!AudioOutputRouteSupport.isDirectMediaRoute(descriptor)) {
+            return null;
+        }
+        return outputs.get(routeMatches.get(0));
+    }
+
+    private OutputBinding firstDirectMediaOutput(List<OutputBinding> outputs) {
+        List<AudioOutputRouteMatcher.OutputDeviceDescriptor> outputDescriptors = descriptors(outputs);
+        for (int i = 0; i < outputs.size(); i++) {
+            if (AudioOutputRouteSupport.isDirectMediaRoute(outputDescriptors.get(i))) {
+                return outputs.get(i);
+            }
+        }
+        return null;
     }
 
     private boolean isBluetoothOutput(AudioDeviceInfo device) {
@@ -391,4 +517,5 @@ public final class AndroidAudioOutputRouter {
             this.device = device;
         }
     }
+
 }

@@ -2,6 +2,96 @@
 
 All notable changes to DualBT will be documented in this file.
 
+## [0.2.36] - 2026-05-25
+
+### Fixed
+- Blocked streaming startup when Android exposes only one active classic A2DP route, preventing DualBT from presenting a false two-speaker stream where both output tracks route to the same speaker.
+- Added a system audio output picker action that opens Xiaomi's audio relay picker when available, or Android Bluetooth settings otherwise, so testers can verify the platform route without leaving the app blind.
+
+## [0.2.35] - 2026-05-25
+
+### Fixed
+- Rejected generic phone SCO routes in the streaming hybrid split planner so a selected speaker leg cannot be silently routed to the handset.
+- Let active A2DP streaming tracks use default media after a handoff when Android's public route metadata remains stale, matching the verified calibration behavior.
+
+## [0.2.34] - 2026-05-25
+
+### Fixed
+- Allowed calibration tests to use default media playback after an attempted A2DP handoff when Android switches the real speaker but keeps public `AudioDeviceInfo` route metadata stale.
+- Prevented the Test 1 calibration path from falling into generic SCO fallback after a Mini Boost A2DP handoff, avoiding blocked tests and Bluetooth media-volume mute side effects.
+
+## [0.2.33] - 2026-05-25
+
+### Fixed
+- Requested transient audio focus for each speaker calibration tone so app tests behave like active media playback instead of relying on a silent or paused media pipeline.
+- Raised calibration tone generation to the clipped-safe maximum gain while keeping system volume control external and logged.
+
+## [0.2.32] - 2026-05-25
+
+### Fixed
+- Kept speaker calibration `AudioTrack` playback alive until the written tone has drained or a bounded Bluetooth latency tail expires, preventing route handoffs from being cut off before the physical speaker can play.
+- Logged calibration target frames and drain timeout so physical speaker tests can distinguish silent routes from prematurely released playback.
+
+## [0.2.31] - 2026-05-25
+
+### Fixed
+- Added a default media calibration route for accepted A2DP active-device switches when Android's public `AudioDeviceInfo` list still exposes the previous Mini Boost address.
+- Kept route logs explicit by marking this path as `media-default-after-a2dp-activation`.
+
+## [0.2.30] - 2026-05-25
+
+### Fixed
+- Added delayed Bluetooth output rescans after active-device attempts so calibration can pick up an A2DP route that appears shortly after Android's route change.
+- Blocked generic phone/SCO communication fallback unless Android exposes a communication route matching the selected speaker, preventing false `Test 1` starts on the phone route.
+
+## [0.2.29] - 2026-05-25
+
+### Fixed
+- Persisted selected speaker addresses and output gain across Activity/ViewModel recreation so UIAutomator dumps and MIUI activity restarts cannot reset physical-test setup to `0/2` and `100%`.
+- Added plain Java state persistence coverage for restored selected-speaker order and saved speaker-address encoding.
+
+## [0.2.28] - 2026-05-25
+
+### Fixed
+- Added in-app calibration volume restore so Bluetooth handoffs cannot leave Test 1 or Test 2 muted after the external test volume was set.
+- Added the `MODIFY_AUDIO_SETTINGS` permission required for reliable stream volume and communication audio adjustments.
+
+## [0.2.27] - 2026-05-25
+
+### Fixed
+- Removed the unsafe calibration fallback that reused the first visible A2DP output after active-device handoff when that output still reported the other Mini Boost address.
+- Added a calibration route planner so `Test 2` uses targeted Headset/SCO when no direct media output matches `Mini boost 2`.
+
+## [0.2.26] - 2026-05-25
+
+### Fixed
+- Converted the Headset/SCO output leg to mono 16 kHz `STREAM_VOICE_CALL` PCM so the `Mini boost 2` communication route is compatible with Android Bluetooth SCO restrictions.
+- Routed the `Test 2` calibration path through targeted Headset/SCO when Android exposes only one direct A2DP media output, instead of silently blocking or reusing the same media speaker.
+
+## [0.2.25] - 2026-05-25
+
+### Added
+- Added an experimental hybrid Bluetooth split planner and Headset/SCO route activation path so one selected Mini Boost can remain on A2DP media while the other is targeted through the headset communication route.
+- Added route logging that exposes wrapped reflective active-device failures instead of hiding them behind `InvocationTargetException`.
+
+## [0.2.24] - 2026-05-25
+
+### Fixed
+- Moved playback capture and experimental A2DP handoff startup off the service main-thread command path so Bluetooth profile callbacks can be delivered on the main looper.
+
+## [0.2.23] - 2026-05-25
+
+### Added
+- Added an experimental streaming A2DP active-device handoff path that creates each output track after switching to its selected Mini Boost target.
+
+### Changed
+- The route availability gate now allows the one-direct-A2DP-route case only as an explicitly logged experiment instead of blocking before physical verification.
+
+## [0.2.22] - 2026-05-24
+
+### Added
+- Added an experimental calibration-only A2DP active-device handoff before speaker tests so `Test 2` can try to switch Android's active Bluetooth media endpoint before playing.
+
 ## [0.2.21] - 2026-05-24
 
 ### Fixed
