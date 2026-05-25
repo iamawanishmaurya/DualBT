@@ -1933,3 +1933,6 @@
 2026-05-25 10:26:24 IST - Confirm Final v0.2.36 Plain Java Tests
 - Action: Polled the pending full plain Java test session after compaction.
 - Result: The session exited with code 0, confirming the full `app/src/test/java/**/*Test.java` main-class suite completed successfully after the v0.2.36 route-gate implementation.
+2026-05-25 10:27:10 IST - Commit v0.2.36 Route Gate Checkpoint
+- Action: Ran `git add -A`, confirmed the staged status, and committed the accumulated Bluetooth routing, calibration, tests, changelog, and problem/solution documentation.
+- Result: Created commit `6831882` with message `fix: gate unsupported classic bluetooth dual routing`.
