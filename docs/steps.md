@@ -1936,3 +1936,6 @@
 2026-05-25 10:27:10 IST - Commit v0.2.36 Route Gate Checkpoint
 - Action: Ran `git add -A`, confirmed the staged status, and committed the accumulated Bluetooth routing, calibration, tests, changelog, and problem/solution documentation.
 - Result: Created commit `6831882` with message `fix: gate unsupported classic bluetooth dual routing`.
+2026-05-25 10:28:07 IST - Push v0.2.36 To GitHub
+- Action: Ran `./scripts/push-github.sh`, which uses plain `git` with `/tmp/DualBT.git` and `/home/astra/codex/DualBT`.
+- Result: GitHub accepted branch update `0c3f53d..d900af4` for `implementation/dualbt-v0.1.0` and created tag `v0.2.36`.
