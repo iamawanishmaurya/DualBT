@@ -1984,3 +1984,6 @@
 2026-05-25 10:49:26 IST - Test v0.2.37 System Route Group Probe On Xiaomi
 - Action: Tapped `Start Stream`, accepted MediaProjection, captured service state, Android audio state, logcat, and DualBT's internal file log.
 - Result: The service reached the new route-group probe, wrote a 4096-byte silent probe to a default media track, then stopped because `MediaRouter2` exposed `Selected=[Mini boost 4], selectable=[]`; created `docs/problems/2026-05-25-v0237-system-route-group-unavailable-on-xiaomi.md` and `docs/solutions/v0237-system-route-group-unavailable-on-xiaomi.md`.
+2026-05-25 10:50:15 IST - Commit v0.2.37 System Route Group Probe
+- Action: Ran `git add -A`, confirmed the staged status, and committed the v0.2.37 system route-group probe implementation and documentation.
+- Result: Created commit `45e8a04` with message `feat: add system route group dual audio probe`.
