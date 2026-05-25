@@ -22,6 +22,7 @@ public final class AndroidAudioOutputRouter {
     private final Context context;
     private final BluetoothA2dpRouteActivator routeActivator;
     private final BluetoothHeadsetRouteActivator headsetRouteActivator;
+    private final SystemMediaRouteGroupController systemRouteGroupController;
     private final ArrayList<AudioTrack> tracks = new ArrayList<>();
     private final ArrayList<String> trackRoutes = new ArrayList<>();
     private final ArrayList<Boolean> communicationTracks = new ArrayList<>();
@@ -29,6 +30,7 @@ public final class AndroidAudioOutputRouter {
     private final ArrayList<byte[]> scoBuffers = new ArrayList<>();
     private AudioManager activeAudioManager;
     private boolean communicationFallbackActive;
+    private boolean systemRouteGroupActive;
     private int previousAudioMode = AudioManager.MODE_NORMAL;
     private long writes;
 
@@ -36,6 +38,7 @@ public final class AndroidAudioOutputRouter {
         this.context = context.getApplicationContext();
         this.routeActivator = new BluetoothA2dpRouteActivator(this.context);
         this.headsetRouteActivator = new BluetoothHeadsetRouteActivator(this.context);
+        this.systemRouteGroupController = new SystemMediaRouteGroupController(this.context);
     }
 
     public synchronized boolean start(AudioCaptureSpec spec, StreamRoutePlan routePlan) {
@@ -57,14 +60,29 @@ public final class AndroidAudioOutputRouter {
         boolean hasTwoDirectRoutes = AudioOutputRouteSupport.hasTwoDirectMediaRoutes(matches, descriptors);
         boolean hybridScoSplit = !hasTwoDirectRoutes && hybridPlan.useHybridSplit;
         boolean activeA2dpHandoff = !hasTwoDirectRoutes && !hybridScoSplit && outputPlan.useActiveA2dpHandoff;
+        SystemMediaRouteGroupController.Result systemRouteGroup = !hasTwoDirectRoutes && !hybridScoSplit
+                ? systemRouteGroupController.inspect(routePlan)
+                : SystemMediaRouteGroupController.Result.unavailable("Direct media routes are available", "Direct routes available");
+        boolean systemRouteGroupProbe = !systemRouteGroup.supported
+                && activeA2dpHandoff
+                && SystemMediaRouteGroupController.canProbeSystemRouteGroup();
+        if (systemRouteGroup.attemptedSelection || systemRouteGroup.supported) {
+            AppLogger.i("AudioOutputRouter", "System route group: " + systemRouteGroup.message);
+        }
         StreamingRouteCapabilityPolicy.Result capability = StreamingRouteCapabilityPolicy.evaluate(
                 AudioOutputRouteSupport.directMediaRouteCount(matches, descriptors),
                 hybridScoSplit,
-                activeA2dpHandoff
+                activeA2dpHandoff,
+                systemRouteGroup.active,
+                systemRouteGroupProbe
         );
         if (!capability.supported) {
             AppLogger.w("AudioOutputRouter", "Dual Bluetooth output blocked: " + capability.message);
             return false;
+        }
+        if (capability.decision == StreamingRouteCapabilityPolicy.Decision.SYSTEM_ROUTE_GROUP
+                || capability.decision == StreamingRouteCapabilityPolicy.Decision.SYSTEM_ROUTE_GROUP_PROBE) {
+            return startSystemRouteGroupOutput(spec, routePlan);
         }
         if (hybridScoSplit) {
             AppLogger.w(
@@ -168,6 +186,17 @@ public final class AndroidAudioOutputRouter {
     }
 
     public synchronized void write(byte[] firstOutput, byte[] secondOutput, int bytes) {
+        if (systemRouteGroupActive) {
+            if (tracks.isEmpty() || bytes <= 0) {
+                return;
+            }
+            writeTrack(0, firstOutput, bytes);
+            writes++;
+            if (writes == 1 || writes % 500 == 0) {
+                AppLogger.d("AudioOutputRouter", "PCM writes=" + writes + ", bytes=" + bytes + ", routes=" + routeNames());
+            }
+            return;
+        }
         if (tracks.size() < 2 || bytes <= 0) {
             return;
         }
@@ -198,7 +227,59 @@ public final class AndroidAudioOutputRouter {
         communicationTracks.clear();
         scoConverters.clear();
         scoBuffers.clear();
+        systemRouteGroupActive = false;
         stopCommunicationFallback();
+    }
+
+    private boolean startSystemRouteGroupOutput(
+            AudioCaptureSpec spec,
+            StreamRoutePlan routePlan
+    ) {
+        int minBufferBytes = AudioTrack.getMinBufferSize(
+                spec.sampleRate(),
+                AudioFormat.CHANNEL_OUT_STEREO,
+                AudioFormat.ENCODING_PCM_16BIT
+        );
+        if (minBufferBytes <= 0) {
+            AppLogger.w("AudioOutputRouter", "AudioTrack minimum buffer unavailable: " + minBufferBytes);
+            return false;
+        }
+        int bufferBytes = Math.max(minBufferBytes * 4, spec.bufferSizeBytes(minBufferBytes));
+        AudioTrack track = buildTrack(spec, bufferBytes, false);
+        if (track.getState() != AudioTrack.STATE_INITIALIZED) {
+            track.release();
+            AppLogger.w("AudioOutputRouter", "System route group AudioTrack was not initialized");
+            return false;
+        }
+        track.play();
+        byte[] routeProbeBuffer = new byte[Math.min(4096, bufferBytes)];
+        int probeWritten = track.write(routeProbeBuffer, 0, routeProbeBuffer.length);
+        AppLogger.i("AudioOutputRouter", "System route group probe track started, silentProbeBytes=" + probeWritten);
+        SystemMediaRouteGroupController.Result systemRouteGroup = systemRouteGroupController.prepare(routePlan);
+        if (!systemRouteGroup.active) {
+            try {
+                track.stop();
+            } catch (RuntimeException ignored) {
+                // The platform may stop a short-lived probe track itself.
+            }
+            track.release();
+            AppLogger.w("AudioOutputRouter", "System route group probe failed: " + systemRouteGroup.message);
+            return false;
+        }
+        tracks.add(track);
+        trackRoutes.add("system route group: " + routePlan.displayNames());
+        communicationTracks.add(false);
+        scoConverters.add(null);
+        scoBuffers.add(null);
+        systemRouteGroupActive = true;
+        writes = 0L;
+        AppLogger.i(
+                "AudioOutputRouter",
+                "System route group output started for " + routePlan.displayNames()
+                        + ", status=" + systemRouteGroup.message
+                        + ", routed=" + describe(track.getRoutedDevice())
+        );
+        return true;
     }
 
     private void writeTrack(int index, byte[] data, int bytes) {

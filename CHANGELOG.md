@@ -2,6 +2,15 @@
 
 All notable changes to DualBT will be documented in this file.
 
+## [0.2.37] - 2026-05-25
+
+### Added
+- Added a `MediaRouter2` system route-group path so DualBT can use Android's public selected/selectable media routes for true same-song playback when the device exposes Samsung-style or LE Audio sharing support.
+- Added a single default-media output mode for active system route groups, letting Android duplicate DualBT's captured PCM to the selected route group instead of creating two tracks that may collapse onto one classic A2DP output.
+
+### Fixed
+- Kept the one-speaker classic A2DP block in place when the OS does not expose a system route group, avoiding false success on phones that can only switch between Bluetooth speakers.
+
 ## [0.2.36] - 2026-05-25
 
 ### Fixed

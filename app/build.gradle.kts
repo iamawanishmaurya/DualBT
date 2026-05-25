@@ -21,8 +21,8 @@ android {
         applicationId = "com.xpwnit.dualbt"
         minSdk = 29
         targetSdk = 34
-        versionCode = 37
-        versionName = "0.2.36"
+        versionCode = 38
+        versionName = "0.2.37"
 
         if (plannedStackEnabled) {
             externalNativeBuild {

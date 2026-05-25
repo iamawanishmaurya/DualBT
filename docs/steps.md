@@ -1939,3 +1939,48 @@
 2026-05-25 10:28:07 IST - Push v0.2.36 To GitHub
 - Action: Ran `./scripts/push-github.sh`, which uses plain `git` with `/tmp/DualBT.git` and `/home/astra/codex/DualBT`.
 - Result: GitHub accepted branch update `0c3f53d..d900af4` for `implementation/dualbt-v0.1.0` and created tag `v0.2.36`.
+2026-05-25 10:34:16 IST - Log App-Level Dual Audio Route-Group Feature Blocker
+- Action: Documented the repeated one-speaker classic A2DP limitation and the new hypothesis that `MediaRouter2` system route grouping is the closest app-level path to Samsung-style dual audio.
+- Result: Created `docs/problems/2026-05-25-app-level-dual-audio-system-route-group-needed.md` and started the matching solution note.
+2026-05-25 10:35:09 IST - Add Failing System Route Group Policy Test
+- Action: Added `SystemMediaRouteGroupPolicyTest` for active route groups, selected-plus-selectable route groups, incomplete groups, and normalized route-name matching.
+- Result: Focused compilation failed as expected with 11 missing-symbol errors because `SystemMediaRouteGroupPolicy` does not exist yet.
+2026-05-25 10:37:28 IST - Implement System Route Group Policy
+- Action: Added `SystemMediaRouteGroupPolicy`, `SystemMediaRouteGroupController`, and the first Android router wiring for `MediaRouter2` system route grouping.
+- Result: Focused `SystemMediaRouteGroupPolicyTest` compiled and ran with exit code 0.
+2026-05-25 10:38:01 IST - Verify Streaming Capability Allows System Route Groups
+- Action: Added and ran a focused `StreamingRouteCapabilityPolicyTest` case for system route groups.
+- Result: Focused streaming capability policy test compiled and ran with exit code 0.
+2026-05-25 10:38:31 IST - Bump v0.2.37 For App-Level System Dual Audio
+- Action: Updated Android version metadata to versionName `0.2.37`/versionCode `38` and added a changelog entry for the `MediaRouter2` route-group output path.
+- Result: Version metadata and changelog are ready for full plain tests and Android build verification.
+2026-05-25 10:39:03 IST - Run Full Plain Java Tests For v0.2.37
+- Action: Compiled and ran every `app/src/test/java/**/*Test.java` main with the system route-group policy changes.
+- Result: Full plain Java test suite exited with code 0.
+2026-05-25 10:40:25 IST - Build v0.2.37 APK
+- Action: Ran the offline Android debug build with the local SDK, offline Maven cache, patched Gradle Java options, and debug keystore.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 54s and produced `app/build/outputs/apk/debug/app-debug.apk`.
+2026-05-25 10:40:58 IST - Install v0.2.37 On Android Device
+- Action: Force-stopped DualBT, installed the v0.2.37 debug APK on device `d1bc5c4a`, set Android media volume to `2/15`, verified package version, and launched the app.
+- Result: Install succeeded and `dumpsys package com.xpwnit.dualbt` reports versionName `0.2.37`/versionCode `38`.
+2026-05-25 10:42:57 IST - Log v0.2.37 Route Group Preflight Probe Blocker
+- Action: Tapped `Start Stream` on the installed v0.2.37 build and captured DualBT logcat.
+- Result: The Activity blocked before service startup with the old one-active-A2DP message; created `docs/problems/2026-05-25-v0237-system-route-group-preflight-blocked-probe.md` and started the matching solution note.
+2026-05-25 10:44:33 IST - Add Failing System Route Group Probe Capability Test
+- Action: Added a `StreamingRouteCapabilityPolicyTest` case that allows a bounded system route-group probe before service startup.
+- Result: Focused compilation failed as expected because the policy has no five-argument probe overload and no `SYSTEM_ROUTE_GROUP_PROBE` decision yet.
+2026-05-25 10:45:43 IST - Implement Bounded System Route Group Probe
+- Action: Added `SYSTEM_ROUTE_GROUP_PROBE`, allowed Activity startup to probe Android 11+ system route groups, and changed the router to start one default media track, write a short silent buffer, request `MediaRouter2` route selection, and keep streaming only if both target routes become active.
+- Result: Focused `StreamingRouteCapabilityPolicyTest` compiled and ran with exit code 0.
+2026-05-25 10:46:11 IST - Rerun Full Plain Java Tests For v0.2.37 Probe
+- Action: Compiled and ran every `app/src/test/java/**/*Test.java` main after adding the bounded system route-group probe.
+- Result: Full plain Java test suite exited with code 0.
+2026-05-25 10:47:24 IST - Rebuild v0.2.37 With Route Group Probe
+- Action: Reran the offline Android debug build after adding the bounded `MediaRouter2` route-group probe.
+- Result: `./gradlew --no-daemon --offline clean assembleDebug` completed successfully in 44s and produced `app/build/outputs/apk/debug/app-debug.apk`.
+2026-05-25 10:47:55 IST - Reinstall v0.2.37 Route Group Probe Build
+- Action: Force-stopped DualBT, installed the rebuilt v0.2.37 APK on device `d1bc5c4a`, set Android media volume to `2/15`, verified package version, and launched the app.
+- Result: Install succeeded and `dumpsys package com.xpwnit.dualbt` reports versionName `0.2.37`/versionCode `38`.
+2026-05-25 10:49:26 IST - Test v0.2.37 System Route Group Probe On Xiaomi
+- Action: Tapped `Start Stream`, accepted MediaProjection, captured service state, Android audio state, logcat, and DualBT's internal file log.
+- Result: The service reached the new route-group probe, wrote a 4096-byte silent probe to a default media track, then stopped because `MediaRouter2` exposed `Selected=[Mini boost 4], selectable=[]`; created `docs/problems/2026-05-25-v0237-system-route-group-unavailable-on-xiaomi.md` and `docs/solutions/v0237-system-route-group-unavailable-on-xiaomi.md`.

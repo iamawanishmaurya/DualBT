@@ -30,10 +30,18 @@ public final class AndroidAudioRouteAvailability {
         int directRoutes = AudioOutputRouteSupport.directMediaRouteCount(matches, outputs);
         AudioOutputModePlanner.Plan outputPlan = AudioOutputModePlanner.plan(matches, outputs);
         HybridBluetoothSplitPlanner.Plan hybridPlan = HybridBluetoothSplitPlanner.plan(matches, outputs);
+        SystemMediaRouteGroupController.Result systemRouteGroup =
+                new SystemMediaRouteGroupController(context).inspect(routePlan);
+        boolean systemRouteGroupProbe = !systemRouteGroup.supported
+                && directRoutes < 2
+                && outputPlan.useActiveA2dpHandoff
+                && SystemMediaRouteGroupController.canProbeSystemRouteGroup();
         StreamingRouteCapabilityPolicy.Result capability = StreamingRouteCapabilityPolicy.evaluate(
                 directRoutes,
                 hybridPlan.useHybridSplit,
-                outputPlan.useActiveA2dpHandoff
+                outputPlan.useActiveA2dpHandoff,
+                systemRouteGroup.supported,
+                systemRouteGroupProbe
         );
         return new Result(capability.supported, directRoutes, capability.message, capability.statusMessage);
     }

@@ -4,6 +4,8 @@ public final class StreamingRouteCapabilityPolicyTest {
     public static void main(String[] args) {
         supportsTwoDirectMediaRoutes();
         supportsMatchedHybridSplit();
+        supportsSystemRouteGroup();
+        allowsBoundedSystemRouteGroupProbe();
         rejectsActiveA2dpHandoffForSimultaneousStreaming();
         rejectsMissingSecondRoute();
     }
@@ -20,6 +22,20 @@ public final class StreamingRouteCapabilityPolicyTest {
 
         assertTrue(result.supported, "matched hybrid A2DP/SCO route can attempt simultaneous playback");
         assertEquals(StreamingRouteCapabilityPolicy.Decision.MATCHED_HYBRID_SPLIT, result.decision, "hybrid route decision");
+    }
+
+    private static void supportsSystemRouteGroup() {
+        StreamingRouteCapabilityPolicy.Result result = StreamingRouteCapabilityPolicy.evaluate(1, false, true, true);
+
+        assertTrue(result.supported, "system route group can provide synchronized dual output");
+        assertEquals(StreamingRouteCapabilityPolicy.Decision.SYSTEM_ROUTE_GROUP, result.decision, "system route group decision");
+    }
+
+    private static void allowsBoundedSystemRouteGroupProbe() {
+        StreamingRouteCapabilityPolicy.Result result = StreamingRouteCapabilityPolicy.evaluate(1, false, true, false, true);
+
+        assertTrue(result.supported, "system route group probe should be allowed before service startup");
+        assertEquals(StreamingRouteCapabilityPolicy.Decision.SYSTEM_ROUTE_GROUP_PROBE, result.decision, "system route group probe decision");
     }
 
     private static void rejectsActiveA2dpHandoffForSimultaneousStreaming() {

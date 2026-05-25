@@ -7,11 +7,32 @@ public final class StreamingRouteCapabilityPolicy {
     public enum Decision {
         DIRECT_MEDIA_ROUTES,
         MATCHED_HYBRID_SPLIT,
+        SYSTEM_ROUTE_GROUP,
+        SYSTEM_ROUTE_GROUP_PROBE,
         SINGLE_A2DP_HANDOFF_ONLY,
         NO_SECOND_ROUTE
     }
 
     public static Result evaluate(int directMediaRoutes, boolean matchedHybridSplit, boolean activeA2dpHandoff) {
+        return evaluate(directMediaRoutes, matchedHybridSplit, activeA2dpHandoff, false);
+    }
+
+    public static Result evaluate(
+            int directMediaRoutes,
+            boolean matchedHybridSplit,
+            boolean activeA2dpHandoff,
+            boolean systemRouteGroup
+    ) {
+        return evaluate(directMediaRoutes, matchedHybridSplit, activeA2dpHandoff, systemRouteGroup, false);
+    }
+
+    public static Result evaluate(
+            int directMediaRoutes,
+            boolean matchedHybridSplit,
+            boolean activeA2dpHandoff,
+            boolean systemRouteGroup,
+            boolean systemRouteGroupProbe
+    ) {
         int directRoutes = Math.max(0, directMediaRoutes);
         if (directRoutes >= 2) {
             return new Result(
@@ -27,6 +48,22 @@ public final class StreamingRouteCapabilityPolicy {
                     Decision.MATCHED_HYBRID_SPLIT,
                     "Android exposes one direct media route plus one matched communication route",
                     "Hybrid dual route available"
+            );
+        }
+        if (systemRouteGroup) {
+            return new Result(
+                    true,
+                    Decision.SYSTEM_ROUTE_GROUP,
+                    "Android system media route grouping is available for the selected speakers",
+                    "System dual audio available"
+            );
+        }
+        if (systemRouteGroupProbe) {
+            return new Result(
+                    true,
+                    Decision.SYSTEM_ROUTE_GROUP_PROBE,
+                    "Android can probe system media route grouping after DualBT starts a media routing session",
+                    "Try system dual audio"
             );
         }
         if (activeA2dpHandoff) {
