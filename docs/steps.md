@@ -2035,6 +2035,9 @@
 2026-05-30 20:48:37 IST - Commit v0.2.38 Laptop Watcher
 - Action: Ran `git add -A`, confirmed staged status, and committed the laptop Bluetooth reconnect watcher, user service, version bump, changelog, and problem/solution documentation.
 - Result: Created commit `2d2f20d` with message `feat: add laptop bluetooth reconnect watcher`.
+2026-05-30 20:49:20 IST - Push v0.2.38 To GitHub
+- Action: Tagged `v0.2.38` and ran `./scripts/push-github.sh` using the restored local `.git` metadata fallback.
+- Result: GitHub accepted branch update `f7e473e..783b317` for `implementation/dualbt-v0.1.0` and created tag `v0.2.38`.
 2026-05-29 09:15:11 IST - Check Connected Device Mic Access Paths
 - Action: Verified ADB sees device `BUNJ6945BAWOKBKF`, located `/home/astra/codex/DualBT`, checked the local scrcpy path, inspected Android version/model, and checked installed recorder/audio packages.
 - Result: The connected device is Xiaomi/POCO model `2311DRK48I` on Android `16`. `/home/astra/.local/bin/scrcpy` exists at version `3.3.4`, and LineageOS Recorder has `RECORD_AUDIO` granted. A broad Android package query hit a non-blocking user-10 permission warning.
