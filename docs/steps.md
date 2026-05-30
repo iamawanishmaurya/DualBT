@@ -1990,3 +1990,63 @@
 2026-05-25 10:50:57 IST - Push v0.2.37 To GitHub
 - Action: Tagged `v0.2.37` and ran `./scripts/push-github.sh`.
 - Result: GitHub accepted branch update `1ff8c48..38f6208` for `implementation/dualbt-v0.1.0` and created tag `v0.2.37`.
+2026-05-30 20:24:49 IST - Diagnose Laptop DualBT Reconnect Need
+- Action: Checked BlueZ and PipeWire state after one Mini Boost speaker discharged and was powered back on.
+- Result: `41:42:26:B3:62:1C` was paired but disconnected, while `41:42:2E:9E:5E:AE` remained connected; created `docs/problems/2026-05-30-laptop-dualbt-speaker-disconnected.md` and started the matching solution note.
+2026-05-30 20:25:55 IST - Reconnect Laptop Mini Boost Speaker
+- Action: Trusted both Mini Boost addresses and ran `bluetoothctl connect 41:42:26:B3:62:1C`.
+- Result: Both speakers are now connected; `41:42:26:B3:62:1C` reports 70% battery and `41:42:2E:9E:5E:AE` reports 10% battery, with both BlueZ cards and sinks visible in PipeWire.
+2026-05-30 20:27:43 IST - Log Unsafe Watcher Start Attempt
+- Action: Attempted to start the laptop watcher with a broad `pkill -f` cleanup before `nohup`.
+- Result: The launcher command exited abnormally with code `-1`; created `docs/problems/2026-05-30-watch-start-pkill-pattern-aborted-shell.md` and the matching solution note before retrying safely.
+2026-05-30 20:28:40 IST - Log Missing External Git Metadata
+- Action: Checked git status with `GIT_DIR=/tmp/DualBT.git` before committing the laptop watcher script.
+- Result: Git failed with `fatal: not a git repository: '/tmp/DualBT.git'`; created `docs/problems/2026-05-30-external-git-dir-missing.md` before recovering Git metadata.
+2026-05-30 20:30:24 IST - Restore Local Git Metadata And Run Laptop Watcher
+- Action: Reinitialized `.git`, fetched `implementation/dualbt-v0.1.0` and tags from GitHub, rebuilt the local index without changing the worktree, added `scripts/dualbt-laptop-audio-watch.sh`, validated it with `bash -n`, ran it once, and started playback.
+- Result: The watcher rebuilt `dualbt_bluetooth_pair`, moved Zen to the pair, and both Bluetooth sinks plus the combined sink are `RUNNING`.
+2026-05-30 20:30:57 IST - Bump v0.2.38 For Laptop Reconnect Watcher
+- Action: Updated Android version metadata to versionName `0.2.38`/versionCode `39` and added a changelog entry for the laptop Bluetooth reconnect watcher.
+- Result: Version metadata and changelog are ready for verification and commit.
+2026-05-30 20:31:27 IST - Verify Laptop Watcher And Plain Java Tests
+- Action: Ran `bash -n scripts/dualbt-laptop-audio-watch.sh`, `scripts/dualbt-laptop-audio-watch.sh --status`, and the full plain Java test suite.
+- Result: Script syntax passed, status showed both Mini Boost speakers connected with `dualbt_bluetooth_pair` running, and all plain Java tests exited with code 0.
+2026-05-30 20:31:55 IST - Log Gradle Java Agent Path Failure
+- Action: Ran the offline Android debug build with the previous hardcoded `/tmp` Gradle instrumentation agent path.
+- Result: The JVM failed before Gradle startup because the agent jar was missing; created `docs/problems/2026-05-30-gradle-javaagent-path-missing.md` and the matching solution note.
+2026-05-30 20:37:34 IST - Log Missing Offline Android Gradle Plugin
+- Action: Reran the Android debug build without the stale Java agent but still with `--offline`.
+- Result: Gradle started but failed resolving Android Gradle Plugin `8.2.2` from the cleaned `/tmp/dualbt-offline-maven`; created `docs/problems/2026-05-30-offline-android-gradle-plugin-cache-missing.md` and the matching solution note.
+2026-05-30 20:41:50 IST - Log Missing Debug Keystore
+- Action: Reran the Android debug build without `--offline` after restoring Gradle dependencies.
+- Result: Build reached `:app:validateSigningDebug` and failed because `/tmp/dualbt-debug.keystore` was missing; created `docs/problems/2026-05-30-debug-keystore-missing.md` and the matching solution note.
+2026-05-30 20:43:23 IST - Regenerate Debug Keystore And Build v0.2.38
+- Action: Generated `/tmp/dualbt-debug.keystore` with `keytool` using alias `androiddebugkey` and reran `./gradlew --no-daemon clean assembleDebug`.
+- Result: `:app:assembleDebug` completed successfully in 35s and produced the debug APK.
+2026-05-30 20:44:07 IST - Make GitHub Push Script Use Restored Local Git Metadata
+- Action: Updated `scripts/push-github.sh` to prefer `$GIT_DIR`, then `/tmp/DualBT.git`, and finally `$ROOT_DIR/.git` when external metadata is missing.
+- Result: The requested plain-git push script can run from the restored local `.git` metadata in this session.
+2026-05-30 20:45:06 IST - Log Nonpersistent Laptop Watcher Process
+- Action: Checked the watcher PID file, process list, and watcher log.
+- Result: PID `1331487` was stale and no watcher process was running; created `docs/problems/2026-05-30-watch-process-not-persistent.md` and started the matching solution note.
+2026-05-30 20:48:04 IST - Install User Service For Laptop Watcher
+- Action: Added `scripts/dualbt-laptop-audio-watch.service`, installed it to `/home/astra/.config/systemd/user/`, ran `systemctl --user daemon-reload`, and enabled/started the service.
+- Result: `dualbt-laptop-audio-watch.service` is active and enabled with PID `1349523`; both Bluetooth sinks and `dualbt_bluetooth_pair` are running.
+2026-05-29 09:15:11 IST - Check Connected Device Mic Access Paths
+- Action: Verified ADB sees device `BUNJ6945BAWOKBKF`, located `/home/astra/codex/DualBT`, checked the local scrcpy path, inspected Android version/model, and checked installed recorder/audio packages.
+- Result: The connected device is Xiaomi/POCO model `2311DRK48I` on Android `16`. `/home/astra/.local/bin/scrcpy` exists at version `3.3.4`, and LineageOS Recorder has `RECORD_AUDIO` granted. A broad Android package query hit a non-blocking user-10 permission warning.
+2026-05-29 09:16:28 IST - Attempt Direct Scrcpy Microphone Capture
+- Action: Ran a five-second scrcpy microphone capture using `--audio-source=mic`, `--require-audio`, `--no-video`, `--no-audio-playback`, and an opus recording target under `/tmp`.
+- Result: scrcpy connected to device `BUNJ6945BAWOKBKF` and selected `c2.android.opus.encoder`, but local recording failed with `No streams to mux were specified`; the output file was zero bytes. Problem logged in `docs/problems/2026-05-29-scrcpy-mic-audio-only-recording-failed.md`.
+2026-05-29 09:17:25 IST - Check Mic Capture Encoders And Verifier
+- Action: Checked `ffprobe` availability and listed scrcpy encoders from device `BUNJ6945BAWOKBKF`.
+- Result: Host `ffprobe` is available, and the Android device exposes audio encoders `c2.android.opus.encoder`, `c2.android.aac.encoder`, and `c2.android.flac.encoder`. The next attempt will record a hidden video container with microphone audio and verify streams with `ffprobe`.
+2026-05-29 09:18:30 IST - Verify Scrcpy Microphone Access
+- Action: Ran scrcpy with `--audio-source=mic`, `--require-audio`, hidden window/no audio playback, and a Matroska recording target, then stopped the session and inspected the recording with `ffprobe` and `ffmpeg astats`.
+- Result: Microphone access worked. The recording contained an `opus` audio stream at `48000 Hz`, `2` channels, and signal statistics showed non-empty audio (`RMS level dB: -26.692580`, `Number of samples: 2342088`). The hidden scrcpy session did not stop on its `--time-limit`, so that follow-up issue is logged in `docs/problems/2026-05-29-scrcpy-hidden-time-limit-not-stopping.md`.
+2026-05-29 09:19:14 IST - Delete Temporary Microphone Test Files
+- Action: Removed `/tmp/dualbt-mic-test-20260529-091628.opus` and `/tmp/dualbt-mic-test-20260529-091742.mkv` after verification.
+- Result: Temporary microphone capture files are no longer present in `/tmp`; only documented stream/probe evidence remains.
+2026-05-29 09:20:15 IST - Check DualBT Git Metadata
+- Action: Checked `scripts/push-github.sh`, the existing external-git-metadata problem/solution records, `/tmp` for `DualBT.git`, and `git -C /home/astra/codex/DualBT status --short`.
+- Result: Git metadata is currently unavailable: `.git` is an empty placeholder and `/tmp/DualBT.git` does not exist, matching the previously documented external metadata loss. The microphone access test is complete, but this docs-only update was not committed or pushed from this workspace state.

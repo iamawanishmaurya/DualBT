@@ -1,0 +1,13 @@
+[Unit]
+Description=DualBT laptop Bluetooth audio reconnect watcher
+After=pipewire.service wireplumber.service bluetooth.service
+Wants=pipewire.service wireplumber.service
+
+[Service]
+Type=simple
+ExecStart=/home/astra/codex/DualBT/scripts/dualbt-laptop-audio-watch.sh --watch
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -2,6 +2,14 @@
 
 All notable changes to DualBT will be documented in this file.
 
+## [0.2.38] - 2026-05-30
+
+### Added
+- Added `scripts/dualbt-laptop-audio-watch.sh` to reconnect the two Mini Boost speakers, force stable A2DP output profiles, rebuild the low-latency `dualbt_bluetooth_pair` combined sink, and move Zen audio back when a speaker disconnects and returns.
+
+### Fixed
+- Documented and recovered the laptop-side stale combined-sink state that happens after one Bluetooth speaker discharges, powers off, and reconnects with a new PipeWire sink.
+
 ## [0.2.37] - 2026-05-25
 
 ### Added

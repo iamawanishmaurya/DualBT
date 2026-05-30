@@ -2,7 +2,15 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GIT_DIR_PATH="${GIT_DIR:-/tmp/DualBT.git}"
+if [[ -n "${GIT_DIR:-}" ]]; then
+  GIT_DIR_PATH="$GIT_DIR"
+elif [[ -d /tmp/DualBT.git ]]; then
+  GIT_DIR_PATH="/tmp/DualBT.git"
+elif [[ -d "$ROOT_DIR/.git" ]]; then
+  GIT_DIR_PATH="$ROOT_DIR/.git"
+else
+  GIT_DIR_PATH="/tmp/DualBT.git"
+fi
 GIT_WORK_TREE_PATH="${GIT_WORK_TREE:-$ROOT_DIR}"
 REMOTE_NAME="${REMOTE_NAME:-origin}"
 BRANCH_NAME="${1:-implementation/dualbt-v0.1.0}"
@@ -13,9 +21,8 @@ if [[ ! -d "$GIT_DIR_PATH" ]]; then
   cat >&2 <<EOF
 Git metadata directory not found: $GIT_DIR_PATH
 
-This workspace has a read-only .git directory. Recreate the external metadata
-directory first, or run this script in the same environment where /tmp/DualBT.git
-already exists.
+Recreate the external metadata directory first, restore a local .git directory,
+or run this script in the same environment where /tmp/DualBT.git already exists.
 EOF
   exit 2
 fi
