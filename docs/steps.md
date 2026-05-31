@@ -2056,3 +2056,9 @@
 2026-05-29 09:20:15 IST - Check DualBT Git Metadata
 - Action: Checked `scripts/push-github.sh`, the existing external-git-metadata problem/solution records, `/tmp` for `DualBT.git`, and `git -C /home/astra/codex/DualBT status --short`.
 - Result: Git metadata is currently unavailable: `.git` is an empty placeholder and `/tmp/DualBT.git` does not exist, matching the previously documented external metadata loss. The microphone access test is complete, but this docs-only update was not committed or pushed from this workspace state.
+2026-05-31 23:18:43 IST - Reconnect Two Laptop Bluetooth Speakers
+- Action: Ran `/home/astra/codex/DualBT/scripts/dualbt-laptop-audio-watch.sh --once`, then verified Bluetooth state, PipeWire sinks, default sink, and the user watcher service.
+- Result: Both `Mini boost 4` speakers are connected (`41:42:26:B3:62:1C` at 100% battery and `41:42:2E:9E:5E:AE` at 80% battery), `dualbt_bluetooth_pair` is the default sink, both Bluetooth output sinks are running, and `dualbt-laptop-audio-watch.service` is active.
+2026-05-31 23:19:34 IST - Set Safe Bluetooth Test Volume
+- Action: Set `dualbt_bluetooth_pair`, `bluez_output.41_42_26_B3_62_1C.1`, and `bluez_output.41_42_2E_9E_5E_AE.1` to 15% with `pactl`.
+- Result: The combined sink and both individual Bluetooth outputs report 15% volume with centered balance.
